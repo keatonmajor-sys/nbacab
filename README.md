@@ -39,3 +39,11 @@ Mobile card sizing refinement:
 - Photo remains the drag surface.
 - Player name/stats area opens the player detail card.
 - Six mobile stats use the recovered vertical space with larger type.
+
+## V14 — 2026-27 contracts + cap overview
+- Contract season explicitly targets 2026-27 during the current offseason.
+- Stats remain the latest completed/available season (2025-26 until 2026-27 games exist).
+- Contract coverage now reports matched active roster players rather than raw rows returned.
+- Player modal defaults to current/future salary rows; previous salary history is collapsed.
+- Added 2026-27 official NBA cap, tax, first-apron and second-apron thresholds.
+- Team cap position is labeled as an estimate based on matched BALLDONTLIE active-roster cap hits; it does not pretend unmatched contracts/non-roster charges are zero.

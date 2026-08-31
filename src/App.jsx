@@ -448,7 +448,7 @@ function Metric({ label, value }) {
   )
 }
 
-function PlayerDetail({ player, stats, seasonLabel, contract, contractDetail, contractLoading, contractError, onClose }) {
+function PlayerDetail({ player, stats, seasonLabel, contractSeason, contract, contractDetail, contractLoading, contractError, onClose }) {
   useEffect(() => {
     if (!player) return undefined
     function onKeyDown(event) {
@@ -534,11 +534,21 @@ function PlayerDetail({ player, stats, seasonLabel, contract, contractDetail, co
                   <Metric label="FREE AGENT" value={deal.free_agent_year ? `${deal.free_agent_year} ${deal.free_agent_status || ''}`.trim() : '—'} />
                 </div>
               )})() : null}
-              {contractDetail.years?.length ? <div className="contract-years">
-                {contractDetail.years.slice().sort((a,b) => a.season-b.season).map((year) => (
-                  <div className="contract-year" key={year.id || year.season}><span>{year.season}-{String(year.season + 1).slice(-2)}</span><strong>{money(year.cap_hit ?? year.base_salary)}</strong></div>
-                ))}
-              </div> : <div className="detail-empty">No year-by-year contract rows returned.</div>}
+              {contractDetail.years?.length ? (() => {
+                const sortedYears = contractDetail.years.slice().sort((a,b) => a.season-b.season)
+                const currentYears = sortedYears.filter((year) => Number(year.season) >= Number(contractSeason || 0))
+                const previousYears = sortedYears.filter((year) => Number(year.season) < Number(contractSeason || 0))
+                return <>
+                  <div className="contract-years">
+                    {(currentYears.length ? currentYears : sortedYears.slice(-1)).map((year) => (
+                      <div className="contract-year" key={year.id || year.season}><span>{year.season}-{String(year.season + 1).slice(-2)}</span><strong>{money(year.cap_hit ?? year.base_salary)}</strong></div>
+                    ))}
+                  </div>
+                  {previousYears.length ? <details className="previous-contracts"><summary>Previous salary history</summary><div className="contract-years previous">
+                    {previousYears.map((year) => <div className="contract-year" key={`old-${year.id || year.season}`}><span>{year.season}-{String(year.season + 1).slice(-2)}</span><strong>{money(year.cap_hit ?? year.base_salary)}</strong></div>)}
+                  </div></details> : null}
+                </>
+              })() : <div className="detail-empty">No year-by-year contract rows returned.</div>}
               {contractDetail.aggregates?.[0]?.contract_notes?.length ? <div className="contract-notes">{contractDetail.aggregates[0].contract_notes.map((note) => <span key={note}>{note}</span>)}</div> : null}
             </>
           ) : <div className="detail-empty">No contract details loaded.</div>}
@@ -575,6 +585,7 @@ function TeamPage() {
   const [contractsByPlayer, setContractsByPlayer] = useState({})
   const [contractsLoading, setContractsLoading] = useState(false)
   const [contractsError, setContractsError] = useState('')
+  const [contractSeason, setContractSeason] = useState(2026)
   const [contractDetail, setContractDetail] = useState(null)
   const [contractDetailLoading, setContractDetailLoading] = useState(false)
   const [contractDetailError, setContractDetailError] = useState('')
@@ -639,10 +650,11 @@ function TeamPage() {
     async function loadContracts() {
       setContractsLoading(true); setContractsError('')
       try {
-        const response = await fetch(`/api/contracts?teamId=${team.id}`, { signal: controller.signal })
+        const response = await fetch(`/api/contracts?teamId=${team.id}&season=2026`, { signal: controller.signal })
         const payload = await response.json()
         if (!response.ok) throw new Error(payload?.error || 'Unable to load contracts.')
         setContractsByPlayer(payload?.byPlayer || {})
+        setContractSeason(Number(payload?.season || 2026))
       } catch (err) { if (err.name !== 'AbortError') setContractsError(err.message || 'Unable to load contracts.') }
       finally { if (!controller.signal.aborted) setContractsLoading(false) }
     }
@@ -748,6 +760,18 @@ function TeamPage() {
 
   if (!team) return <Navigate to="/" replace />
 
+  const CAP_2026 = { cap: 164961000, tax: 200428000, firstApron: 209015000, secondApron: 221686000 }
+  const matchedContractCount = players.filter((player) => contractsByPlayer[player.id]).length
+  const knownRosterCap = players.reduce((sum, player) => {
+    const row = contractsByPlayer[player.id]
+    return sum + Number(row?.cap_hit ?? row?.base_salary ?? 0)
+  }, 0)
+  const capRoom = CAP_2026.cap - knownRosterCap
+  const taxRoom = CAP_2026.tax - knownRosterCap
+  const firstApronRoom = CAP_2026.firstApron - knownRosterCap
+  const secondApronRoom = CAP_2026.secondApron - knownRosterCap
+  const roomLabel = (value) => `${money(Math.abs(value), true)} ${value >= 0 ? 'under' : 'over'}`
+
   return (
     <AppShell>
       <Link to="/" className="back-link">← All teams</Link>
@@ -764,8 +788,22 @@ function TeamPage() {
       <section className="status-strip">
         <div><span>Roster</span><strong>{loading ? 'Loading…' : `${players.length} active`}</strong></div>
         <div><span>Photos</span><strong>{loading ? 'Matching…' : `${imageMatches}/${players.length} matched`}</strong></div>
-        <div><span>Stats</span><strong>{statsLoading ? 'Calculating…' : statsError ? 'Unavailable' : seasonLabel ? `${seasonLabel} live` : 'Waiting…'}</strong></div>
-        <div><span>Salaries</span><strong>{contractsLoading ? 'Loading…' : contractsError ? 'Unavailable' : `${Object.keys(contractsByPlayer).length} loaded`}</strong></div>
+        <div><span>Stats</span><strong>{statsLoading ? 'Calculating…' : statsError ? 'Unavailable' : seasonLabel ? `${seasonLabel} latest` : 'Waiting…'}</strong></div>
+        <div><span>Contracts</span><strong>{contractsLoading ? 'Loading…' : contractsError ? 'Unavailable' : `${matchedContractCount}/${players.length} matched · ${contractSeason}-${String(contractSeason + 1).slice(-2)}`}</strong></div>
+      </section>
+
+      <section className="cap-overview">
+        <div className="cap-overview-heading">
+          <div><span className="eyebrow">2026-27 CBA</span><h2>Cap overview</h2></div>
+          <div className="cap-known"><span>Matched roster cap hits</span><strong>{contractsLoading ? 'Loading…' : money(knownRosterCap, true)}</strong><small>{matchedContractCount}/{players.length} active players matched</small></div>
+        </div>
+        <div className="cap-threshold-grid">
+          <div><span>Salary cap</span><strong>{money(CAP_2026.cap, true)}</strong><small>{roomLabel(capRoom)}</small></div>
+          <div><span>Luxury tax</span><strong>{money(CAP_2026.tax, true)}</strong><small>{roomLabel(taxRoom)}</small></div>
+          <div><span>1st apron</span><strong>{money(CAP_2026.firstApron, true)}</strong><small>{roomLabel(firstApronRoom)}</small></div>
+          <div><span>2nd apron</span><strong>{money(CAP_2026.secondApron, true)}</strong><small>{roomLabel(secondApronRoom)}</small></div>
+        </div>
+        <p className="cap-disclaimer">NBA 2026-27 thresholds are official. Team room is calculated from the BALLDONTLIE cap hits currently matched to this active roster, so it remains an estimate until every contract and any non-roster cap charges are accounted for.</p>
       </section>
 
       <section className="depth-chart-section">
@@ -833,6 +871,7 @@ function TeamPage() {
         player={selectedPlayer}
         stats={selectedPlayer ? statsByPlayer[selectedPlayer.id] : null}
         seasonLabel={seasonLabel}
+        contractSeason={contractSeason}
         contract={selectedPlayer ? contractsByPlayer[selectedPlayer.id] : null}
         contractDetail={contractDetail}
         contractLoading={contractDetailLoading}

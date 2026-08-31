@@ -1,9 +1,10 @@
 const BDL_BASE = 'https://api.balldontlie.io/v1/contracts'
 
-function currentNbaSeasonStartYear(date = new Date()) {
+function currentContractSeasonStartYear(date = new Date()) {
   const year = date.getUTCFullYear()
   const month = date.getUTCMonth()
-  return month >= 9 ? year : year - 1
+  // NBA contract/cap seasons roll to the new league year in July.
+  return month >= 6 ? year : year - 1
 }
 
 async function bdlGet(url, apiKey) {
@@ -27,7 +28,7 @@ export default async function handler(req, res) {
 
   const playerId = Number(req.query.playerId)
   const teamId = Number(req.query.teamId)
-  const season = Number.isInteger(Number(req.query.season)) ? Number(req.query.season) : currentNbaSeasonStartYear()
+  const season = Number.isInteger(Number(req.query.season)) ? Number(req.query.season) : currentContractSeasonStartYear()
 
   try {
     if (Number.isInteger(playerId) && playerId > 0) {
