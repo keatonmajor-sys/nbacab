@@ -952,7 +952,6 @@ function TeamPage() {
             <span className={`lineup-confidence ${projectedLineup.validation?.confidence || 'medium'}`}>
               {projectedLineup.validation?.confidence === 'high' ? 'High confidence' : projectedLineup.validation?.confidence === 'low' ? 'Low confidence' : 'Projected'}
               {projectedLineup.validation?.checked ? ` · ${projectedLineup.validation.agreements}/${projectedLineup.validation.checked} source agreement` : ''}
-              {projectedLineup.sources ? ` · RealGM ${projectedLineup.sources.realgm?.ok ? '✓' : '×'} · ESPN ${projectedLineup.sources.espn?.ok ? '✓' : '×'}` : ''}
             </span>
           ) : null}
         </div>

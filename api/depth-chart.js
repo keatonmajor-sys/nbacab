@@ -1,8 +1,8 @@
 import * as cheerio from 'cheerio'
 
 const REALGM_URL = 'https://basketball.realgm.com/nba/depth-charts'
+const ESPN_DEPTH_URL = 'https://www.espn.com/nba/depth'
 const ROTOWIRE_URL = 'https://www.rotowire.com/basketball/nba-depth-charts.php'
-const ESPN_CORE_BASE = 'https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba'
 
 const TEAM_NAMES = {
   ATL: 'Atlanta Hawks', BOS: 'Boston Celtics', BKN: 'Brooklyn Nets', CHA: 'Charlotte Hornets',
@@ -14,16 +14,10 @@ const TEAM_NAMES = {
   POR: 'Portland Trail Blazers', SAC: 'Sacramento Kings', SAS: 'San Antonio Spurs', TOR: 'Toronto Raptors',
   UTA: 'Utah Jazz', WAS: 'Washington Wizards',
 }
-
-// ESPN's NBA team IDs are stable and differ from BALLDONTLIE IDs for several clubs.
-const ESPN_TEAM_IDS = {
-  ATL: 1, BOS: 2, BKN: 17, CHA: 30, CHI: 4, CLE: 5, DAL: 6, DEN: 7, DET: 8, GSW: 9,
-  HOU: 10, IND: 11, LAC: 12, LAL: 13, MEM: 29, MIA: 14, MIL: 15, MIN: 16, NOP: 3,
-  NYK: 18, OKC: 25, ORL: 19, PHI: 20, PHX: 21, POR: 22, SAC: 23, SAS: 24, TOR: 28,
-  UTA: 26, WAS: 27,
-}
-
 const POSITIONS = ['PG', 'SG', 'SF', 'PF', 'C']
+const ESPN_TEAM_LABELS = {
+  ATL:'Atlanta', BOS:'Boston', BKN:'Brooklyn', CHA:'Charlotte', CHI:'Chicago', CLE:'Cleveland', DAL:'Dallas', DEN:'Denver', DET:'Detroit', GSW:'Golden State', HOU:'Houston', IND:'Indiana', LAC:'LA Clippers', LAL:'LA Lakers', MEM:'Memphis', MIA:'Miami', MIL:'Milwaukee', MIN:'Minnesota', NOP:'New Orleans', NYK:'New York', OKC:'Oklahoma City', ORL:'Orlando', PHI:'Philadelphia', PHX:'Phoenix', POR:'Portland', SAC:'Sacramento', SAS:'San Antonio', TOR:'Toronto', UTA:'Utah', WAS:'Washington'
+}
 
 function clean(value = '') { return String(value).replace(/\s+/g, ' ').trim() }
 function norm(value = '') {
@@ -34,8 +28,6 @@ function seasonStart(date = new Date()) {
   const month = date.getUTCMonth()
   return month >= 6 ? year : year - 1
 }
-function blankChart() { return Object.fromEntries(POSITIONS.map((p) => [p, []])) }
-
 async function fetchHtml(url) {
   const response = await fetch(url, {
     headers: {
@@ -46,81 +38,51 @@ async function fetchHtml(url) {
   if (!response.ok) throw new Error(`${new URL(url).hostname} returned ${response.status}`)
   return response.text()
 }
-
-async function fetchJson(url) {
-  const response = await fetch(url, {
-    headers: {
-      Accept: 'application/json',
-      'User-Agent': 'Mozilla/5.0 (compatible; NBACAB/1.0; +https://nbacab.vercel.app)',
-    },
-  })
-  if (!response.ok) throw new Error(`${new URL(url).hostname} returned ${response.status}`)
-  return response.json()
-}
-
+function blankChart() { return Object.fromEntries(POSITIONS.map((p) => [p, []])) }
 function playerText(cell, $) {
   const links = $(cell).find('a')
   if (links.length) {
+    // RealGM player links are the cleanest source and avoid the stats text under the name.
     const candidate = clean(links.first().text())
     if (candidate) return candidate
   }
   const text = clean($(cell).clone().children().remove().end().text()) || clean($(cell).text())
   return text.replace(/\b\d+(?:\.\d+)?\s*[prab]\b.*$/i, '').trim()
 }
-
-function tableHasPositions(table, $) {
-  const headers = $(table).find('tr').first().find('th,td').map((_, c) => clean($(c).text()).toUpperCase()).get()
-  return POSITIONS.every((p) => headers.includes(p))
-}
-
-// RealGM's page is a league-wide document. Pairing depth-chart headings and tables by
-// document order is more resilient than assuming the table is a direct sibling of the h2.
 function findRealGmTeamTable($, teamName) {
   const target = norm(teamName)
-  const headings = $('h1,h2,h3,h4').toArray().filter((el) => {
-    const text = clean($(el).text()).replace(/\d{4}-\d{4}/g, '').replace(/depth chart/ig, '')
-    const n = norm(text)
-    return n && (n.includes(target) || target.includes(n))
+  let heading = null
+  $('h1,h2,h3,h4').each((_, el) => {
+    if (heading) return
+    const t = norm($(el).text().replace(/\d{4}-\d{4}/g, '').replace(/depth chart/ig, ''))
+    if (t && (t.includes(target) || target.includes(t))) heading = $(el)
   })
-
-  for (const heading of headings) {
-    const headingIndex = $(heading).index()
-    let node = $(heading).next()
-    let steps = 0
-    while (node?.length && steps < 40) {
-      const tag = String(node[0]?.tagName || '').toLowerCase()
-      if (/^h[1-4]$/.test(tag) && node[0] !== heading) break
-      if (tag === 'table' && tableHasPositions(node, $)) return node
-      const nestedTables = node.find('table').toArray()
-      for (const table of nestedTables) {
-        if (tableHasPositions(table, $)) return $(table)
-      }
-      node = node.next()
-      steps += 1
+  if (heading?.length) {
+    let node = heading.next()
+    for (let i = 0; node?.length && i < 8; i += 1, node = node.next()) {
+      if (String(node[0]?.tagName).toLowerCase() === 'table') return node
+      const nested = node.find?.('table').first()
+      if (nested?.length) return nested
     }
-    void headingIndex
   }
-
-  // Final fallback: pair all depth-chart headings and all 5-position tables in document order.
-  const depthHeadings = $('h1,h2,h3,h4').toArray().filter((el) => /depth chart/i.test(clean($(el).text())))
-  const depthTables = $('table').toArray().filter((table) => tableHasPositions(table, $))
-  const headingIndex = depthHeadings.findIndex((el) => {
-    const t = norm(clean($(el).text()).replace(/\d{4}-\d{4}/g, '').replace(/depth chart/ig, ''))
-    return t && (t.includes(target) || target.includes(t))
+  // Fallback: locate a table with PG/SG/SF/PF/C whose nearby text names this team.
+  let found = null
+  $('table').each((_, table) => {
+    if (found) return
+    const headers = $(table).find('tr').first().find('th,td').map((__, c) => clean($(c).text()).toUpperCase()).get()
+    if (!POSITIONS.every((p) => headers.includes(p))) return
+    const nearby = clean($(table).prevAll('h1,h2,h3,h4').first().text())
+    if (norm(nearby).includes(target)) found = $(table)
   })
-  if (headingIndex >= 0 && depthTables[headingIndex]) return $(depthTables[headingIndex])
-
-  return null
+  return found
 }
-
 function parseRealGM(html, teamName) {
   const $ = cheerio.load(html)
   const table = findRealGmTeamTable($, teamName)
   if (!table?.length) return null
   const chart = blankChart()
   let starters = null
-
-  table.find('tr').each((_, row) => {
+  table.find('tr').each((rowIndex, row) => {
     const cells = $(row).find('th,td').toArray()
     if (cells.length < 6) return
     const role = clean($(cells[0]).text())
@@ -129,99 +91,58 @@ function parseRealGM(html, teamName) {
     POSITIONS.forEach((pos, i) => {
       const name = playerText(cells[i + 1], $)
       if (!name || /^(?:-|—|n\/a)$/i.test(name)) return
-      if (!chart[pos].some((existing) => norm(existing) === norm(name))) chart[pos].push(name)
+      chart[pos].push(name)
       rowPlayers[pos] = name
     })
     if (/^starters?/i.test(role)) starters = rowPlayers
   })
-
   if (!POSITIONS.some((p) => chart[p].length)) return null
-  return {
-    chart,
-    starters: starters || Object.fromEntries(POSITIONS.map((p) => [p, chart[p][0] || null])),
-  }
+  return { chart, starters: starters || Object.fromEntries(POSITIONS.map((p) => [p, chart[p][0] || null])) }
 }
 
-function extractEspnPositionKey(position, fallbackKey = '') {
-  const candidates = [
-    position?.abbreviation,
-    position?.name,
-    position?.displayName,
-    position?.shortName,
-    fallbackKey,
-  ].map((x) => clean(x).toUpperCase())
-  return POSITIONS.find((p) => candidates.some((candidate) => candidate === p || candidate.startsWith(`${p} `))) || null
-}
-
-function extractAthleteIdFromRef(ref = '') {
-  const match = String(ref).match(/\/athletes\/(\d+)/)
-  return match?.[1] || null
-}
-
-function athleteDisplayName(payload) {
-  return clean(payload?.displayName || payload?.fullName || payload?.shortName || `${payload?.firstName || ''} ${payload?.lastName || ''}`)
-}
-
-// ESPN Core is JSON and therefore serves as a genuinely independent fallback instead of
-// relying on the shape of ESPN's rendered web page.
-async function fetchEspnDepthChart(teamAbbr, season) {
-  const teamId = ESPN_TEAM_IDS[teamAbbr]
-  if (!teamId) return null
-  const espnSeason = season + 1
-  const url = `${ESPN_CORE_BASE}/seasons/${espnSeason}/teams/${teamId}/depthcharts?lang=en&region=us`
-  const payload = await fetchJson(url)
-  const items = Array.isArray(payload?.items) ? payload.items : []
-  if (!items.length) return null
-
-  const chart = blankChart()
-  const athleteCache = new Map()
-
-  async function resolveAthlete(athlete) {
-    const inline = athlete?.athlete || athlete
-    const inlineName = athleteDisplayName(inline)
-    if (inlineName) return inlineName
-    const ref = inline?.$ref || athlete?.athlete?.$ref || athlete?.$ref
-    if (!ref) return null
-    const id = extractAthleteIdFromRef(ref) || ref
-    if (!athleteCache.has(id)) {
-      athleteCache.set(id, fetchJson(ref).then(athleteDisplayName).catch(() => null))
+function parseESPN(html, teamAbbr) {
+  const $ = cheerio.load(html)
+  const wanted = norm(ESPN_TEAM_LABELS[teamAbbr] || TEAM_NAMES[teamAbbr])
+  let result = null
+  $('table').each((_, table) => {
+    if (result) return
+    const rows = $(table).find('tr').toArray()
+    if (!rows.length) return
+    const headers = $(rows[0]).find('th,td').map((__, c) => clean($(c).text()).toUpperCase()).get()
+    const indices = Object.fromEntries(POSITIONS.map((p) => [p, headers.indexOf(p)]))
+    if (POSITIONS.filter((p) => indices[p] >= 0).length < 5) return
+    for (const row of rows.slice(1)) {
+      const cells = $(row).find('th,td').toArray()
+      if (!cells.length) continue
+      const teamCell = clean($(cells[0]).text())
+      if (!teamCell || !(norm(teamCell).includes(wanted) || wanted.includes(norm(teamCell)))) continue
+      const starters = {}
+      for (const p of POSITIONS) {
+        const idx = indices[p]
+        if (idx < 0 || !cells[idx]) continue
+        const name = playerText(cells[idx], $).replace(/\s*\(IL\)\s*$/i, '').trim()
+        if (name) starters[p] = name
+      }
+      if (Object.keys(starters).length >= 4) {
+        const chart = blankChart()
+        POSITIONS.forEach((p) => { if (starters[p]) chart[p].push(starters[p]) })
+        result = { chart, starters }
+        break
+      }
     }
-    return athleteCache.get(id)
-  }
-
-  const work = []
-  for (const item of items) {
-    const positions = item?.positions || {}
-    for (const [fallbackKey, position] of Object.entries(positions)) {
-      const key = extractEspnPositionKey(position?.position, fallbackKey)
-      if (!key) continue
-      const athletes = Array.isArray(position?.athletes) ? [...position.athletes] : []
-      athletes.sort((a, b) => Number(a?.rank ?? 999) - Number(b?.rank ?? 999))
-      work.push((async () => {
-        for (const entry of athletes) {
-          const name = await resolveAthlete(entry)
-          if (name && !chart[key].some((existing) => norm(existing) === norm(name))) chart[key].push(name)
-        }
-      })())
-    }
-  }
-  await Promise.all(work)
-
-  if (!POSITIONS.some((p) => chart[p].length)) return null
-  return {
-    chart,
-    starters: Object.fromEntries(POSITIONS.map((p) => [p, chart[p][0] || null])),
-    url,
-  }
+  })
+  return result
 }
 
+// RotoWire's markup changes periodically, so this parser is deliberately defensive.
+// When it cannot confidently identify five position columns, it returns null and RealGM remains authoritative.
 function parseRotoWire(html, teamName, teamAbbr) {
   const $ = cheerio.load(html)
   const aliases = [teamName, teamAbbr]
   let root = null
   $('[data-team], .depth-chart, .depthchart, .nba-depth-chart, article, section').each((_, el) => {
     if (root) return
-    const text = clean($(el).text()).slice(0, 300)
+    const text = clean($(el).text()).slice(0, 260)
     if (aliases.some((a) => norm(text).includes(norm(a))) && POSITIONS.filter((p) => text.toUpperCase().includes(p)).length >= 3) root = $(el)
   })
   if (!root?.length) return null
@@ -231,7 +152,8 @@ function parseRotoWire(html, teamName, teamAbbr) {
   let table = null
   tables.each((_, t) => {
     if (table) return
-    if (tableHasPositions(t, $)) table = $(t)
+    const headers = $(t).find('tr').first().find('th,td').map((__, c) => clean($(c).text()).toUpperCase()).get()
+    if (POSITIONS.filter((p) => headers.includes(p)).length >= 4) table = $(t)
   })
   if (table?.length) {
     const headerCells = table.find('tr').first().find('th,td').map((_, c) => clean($(c).text()).toUpperCase()).get()
@@ -249,7 +171,6 @@ function parseRotoWire(html, teamName, teamAbbr) {
   if (!POSITIONS.some((p) => chart[p].length)) return null
   return { chart, starters: Object.fromEntries(POSITIONS.map((p) => [p, chart[p][0] || null])) }
 }
-
 function namesLikelyMatch(a, b) {
   const na = norm(a), nb = norm(b)
   if (!na || !nb) return false
@@ -261,13 +182,9 @@ function namesLikelyMatch(a, b) {
   const ai = norm(aParts[0] || '')[0], bi = norm(bParts[0] || '')[0]
   return !ai || !bi || ai === bi
 }
-
-function buildValidation(primary, secondary, primaryName, secondaryName) {
+function buildValidation(primary, secondary, secondaryName = 'secondary source') {
   if (!primary) return { confidence: 'unavailable', agreements: 0, conflicts: [], checked: 0 }
-  if (!secondary) return {
-    confidence: 'medium', agreements: 0, conflicts: [], checked: 0,
-    note: `${primaryName} projection available; secondary validation unavailable.`,
-  }
+  if (!secondary) return { confidence: 'medium', agreements: 0, conflicts: [], checked: 0, note: 'Primary projection available; secondary validation unavailable.' }
   let agreements = 0
   const conflicts = []
   for (const p of POSITIONS) {
@@ -275,11 +192,11 @@ function buildValidation(primary, secondary, primaryName, secondaryName) {
     const b = secondary.starters?.[p]
     if (!a || !b) continue
     if (namesLikelyMatch(a, b)) agreements += 1
-    else conflicts.push({ position: p, primary: a, secondary: b })
+    else conflicts.push({ position: p, realgm: a, rotowire: b })
   }
   const checked = agreements + conflicts.length
   const confidence = checked >= 4 && agreements >= 4 ? 'high' : checked >= 3 && agreements >= 2 ? 'medium' : 'low'
-  return { confidence, agreements, conflicts, checked, primary: primaryName, secondary: secondaryName }
+  return { confidence, agreements, conflicts, checked, secondary: secondaryName }
 }
 
 export default async function handler(req, res) {
@@ -287,29 +204,22 @@ export default async function handler(req, res) {
     res.setHeader('Allow', 'GET')
     return res.status(405).json({ error: 'Method not allowed' })
   }
-
   const teamAbbr = String(req.query.teamAbbr || '').toUpperCase().trim()
   const teamName = TEAM_NAMES[teamAbbr]
   if (!teamName) return res.status(400).json({ error: 'A valid NBA teamAbbr is required.' })
 
-  const season = seasonStart()
-  const [realgmResult, espnResult, rotowireResult] = await Promise.allSettled([
-    fetchHtml(REALGM_URL),
-    fetchEspnDepthChart(teamAbbr, season),
-    fetchHtml(ROTOWIRE_URL),
-  ])
-
+  const [realgmResult, espnResult, rotowireResult] = await Promise.allSettled([fetchHtml(REALGM_URL), fetchHtml(ESPN_DEPTH_URL), fetchHtml(ROTOWIRE_URL)])
   const realgm = realgmResult.status === 'fulfilled' ? parseRealGM(realgmResult.value, teamName) : null
-  const espn = espnResult.status === 'fulfilled' ? espnResult.value : null
+  const espn = espnResult.status === 'fulfilled' ? parseESPN(espnResult.value, teamAbbr) : null
   const rotowire = rotowireResult.status === 'fulfilled' ? parseRotoWire(rotowireResult.value, teamName, teamAbbr) : null
 
   if (!realgm && !espn && !rotowire) {
-    res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=900')
+    res.setHeader('Cache-Control', 's-maxage=600, stale-while-revalidate=1800')
     return res.status(502).json({
       error: 'Projected depth-chart sources are temporarily unavailable.',
       sources: {
         realgm: { ok: false, error: realgmResult.status === 'rejected' ? realgmResult.reason?.message : 'Unable to parse team depth chart.' },
-        espn: { ok: false, error: espnResult.status === 'rejected' ? espnResult.reason?.message : 'Unable to parse ESPN Core depth chart.' },
+        espn: { ok: false, error: espnResult.status === 'rejected' ? espnResult.reason?.message : 'Unable to parse team depth chart.' },
         rotowire: { ok: false, error: rotowireResult.status === 'rejected' ? rotowireResult.reason?.message : 'Unable to parse team depth chart.' },
       },
     })
@@ -317,11 +227,12 @@ export default async function handler(req, res) {
 
   const primary = realgm || espn || rotowire
   const primaryName = realgm ? 'RealGM' : espn ? 'ESPN' : 'RotoWire'
-  const secondary = primaryName === 'RealGM' ? (espn || rotowire) : primaryName === 'ESPN' ? rotowire : null
-  const secondaryName = primaryName === 'RealGM' && espn ? 'ESPN' : primaryName === 'RealGM' && rotowire ? 'RotoWire' : primaryName === 'ESPN' && rotowire ? 'RotoWire' : null
-  const validation = buildValidation(primary, secondary, primaryName, secondaryName || 'secondary source')
+  const secondary = realgm ? (espn || rotowire) : (espn && rotowire ? rotowire : null)
+  const secondaryName = realgm && espn ? 'ESPN' : realgm && rotowire ? 'RotoWire' : espn && rotowire ? 'RotoWire' : null
+  const validation = buildValidation(primary, secondary, secondaryName || 'secondary source')
+  const season = seasonStart()
 
-  res.setHeader('Cache-Control', 's-maxage=600, stale-while-revalidate=1800')
+  res.setHeader('Cache-Control', 's-maxage=1800, stale-while-revalidate=7200')
   return res.status(200).json({
     teamAbbr,
     teamName,
@@ -332,24 +243,9 @@ export default async function handler(req, res) {
     starters: primary.starters,
     validation,
     sources: {
-      realgm: {
-        ok: Boolean(realgm),
-        fetchOk: realgmResult.status === 'fulfilled',
-        url: REALGM_URL,
-        error: realgmResult.status === 'rejected' ? realgmResult.reason?.message : realgm ? null : 'Fetched, but team table did not parse.',
-      },
-      espn: {
-        ok: Boolean(espn),
-        fetchOk: espnResult.status === 'fulfilled',
-        url: espn?.url || `${ESPN_CORE_BASE}/seasons/${season + 1}/teams/${ESPN_TEAM_IDS[teamAbbr]}/depthcharts?lang=en&region=us`,
-        error: espnResult.status === 'rejected' ? espnResult.reason?.message : espn ? null : 'Fetched, but team depth chart was empty.',
-      },
-      rotowire: {
-        ok: Boolean(rotowire),
-        fetchOk: rotowireResult.status === 'fulfilled',
-        url: ROTOWIRE_URL,
-        error: rotowireResult.status === 'rejected' ? rotowireResult.reason?.message : rotowire ? null : 'Fetched, but team depth chart did not parse.',
-      },
+      realgm: { ok: Boolean(realgm), url: REALGM_URL },
+      espn: { ok: Boolean(espn), url: ESPN_DEPTH_URL },
+      rotowire: { ok: Boolean(rotowire), url: ROTOWIRE_URL },
     },
     verifiedAt: new Date().toISOString(),
   })
