@@ -441,3 +441,23 @@ button { font: inherit; }
   .mobile-quick-stats strong { font-size:.61rem; }
   .mobile-quick-stats small { font-size:.31rem; }
 }
+
+/* V11: mobile cards use the full card for stats; photo drags, info/stats open details */
+@media (max-width:700px) {
+  .move-player-button { display:none !important; }
+  .player-card.is-editing .player-info-button { padding-bottom:0; }
+  .player-info-button { display:block; width:100%; min-height:0; }
+  .player-card-copy { padding:7px 5px 10px !important; }
+  .player-topline strong { font-size:.62rem; line-height:1.08; }
+  .mobile-quick-stats { gap:2px; margin-top:7px; }
+  .mobile-quick-stats strong { font-size:.82rem; line-height:1.08; }
+  .mobile-quick-stats small { font-size:.38rem; }
+  .starter-card .mobile-quick-stats strong { font-size:.86rem; }
+}
+@media (max-width:420px) {
+  .player-card-copy { padding:6px 4px 9px !important; }
+  .player-topline strong { font-size:.57rem; }
+  .mobile-quick-stats strong { font-size:.74rem; }
+  .mobile-quick-stats small { font-size:.34rem; }
+  .starter-card .mobile-quick-stats strong { font-size:.78rem; }
+}

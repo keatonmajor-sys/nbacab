@@ -24,3 +24,10 @@
 ## V10
 - Mobile stats are now a readable 1-column x 6-row stack: PTS, REB, AST, BLK, STL, 3PM.
 - Removed the tiny 3x2 stat-box presentation while preserving the five-position mobile depth chart.
+
+
+## V11
+- Mobile Move button/blank footer removed.
+- Photo remains the drag surface.
+- Player name/stats area opens the player detail card.
+- Six mobile stats use the recovered vertical space with larger type.
