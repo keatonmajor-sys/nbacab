@@ -461,3 +461,45 @@ button { font: inherit; }
   .mobile-quick-stats small { font-size:.34rem; }
   .starter-card .mobile-quick-stats strong { font-size:.78rem; }
 }
+
+/* V12: mobile cards shrink-wrap their content and maximize readable stat size */
+@media (max-width:700px) {
+  .player-card,
+  .bench-card,
+  .starter-card {
+    min-height:0 !important;
+    height:auto !important;
+  }
+  .player-info-button {
+    min-height:0 !important;
+    height:auto !important;
+  }
+  .player-card-copy {
+    padding:7px 5px 8px !important;
+  }
+  .mobile-quick-stats {
+    gap:2px;
+    margin-top:7px;
+  }
+  .mobile-quick-stats span {
+    gap:4px;
+  }
+  .mobile-quick-stats strong,
+  .starter-card .mobile-quick-stats strong {
+    font-size:clamp(.78rem, 3.7vw, 1rem);
+    line-height:1.04;
+    font-variant-numeric:tabular-nums;
+  }
+  .mobile-quick-stats small,
+  .starter-card .mobile-quick-stats small {
+    font-size:clamp(.32rem, 1.55vw, .42rem);
+    line-height:1;
+  }
+}
+@media (max-width:420px) {
+  .player-card-copy { padding:6px 4px 7px !important; }
+  .mobile-quick-stats strong,
+  .starter-card .mobile-quick-stats strong { font-size:clamp(.74rem, 3.55vw, .94rem); }
+  .mobile-quick-stats small,
+  .starter-card .mobile-quick-stats small { font-size:clamp(.3rem, 1.45vw, .39rem); }
+}

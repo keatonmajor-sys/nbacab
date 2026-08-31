@@ -1,3 +1,11 @@
+# NBACAB V12
+
+Mobile card sizing refinement:
+- Removes inherited starter-card minimum height that caused blank space below stats.
+- Cards now shrink-wrap photo + name + six-stat stack.
+- Stat typography is increased responsively to the largest practical size for the five-column mobile layout.
+- Photo remains the drag zone; name/stats remain the player-detail tap zone.
+
 # NBACAB V7 — Depth Slots + Mobile Five-Column View
 
 - Drag players between any starter or backup slot at any position.
