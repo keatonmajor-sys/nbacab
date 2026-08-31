@@ -22,14 +22,25 @@ function AppShell({ children }) {
   )
 }
 
-function TeamBadge({ team }) {
-  return <div className="team-badge" aria-hidden="true">{team.abbr}</div>
+function TeamLogo({ team, size = 'normal' }) {
+  const [failed, setFailed] = useState(false)
+  const url = `https://a.espncdn.com/i/teamlogos/nba/500/${team.abbr.toLowerCase()}.png`
+
+  return (
+    <div className={`team-logo ${size === 'large' ? 'team-logo-large' : ''}`}>
+      {!failed ? (
+        <img src={url} alt={`${team.city} ${team.name} logo`} onError={() => setFailed(true)} />
+      ) : (
+        <strong aria-label={`${team.city} ${team.name}`}>{team.abbr}</strong>
+      )}
+    </div>
+  )
 }
 
 function TeamCard({ team }) {
   return (
     <Link to={`/team/${team.abbr.toLowerCase()}`} className="team-card">
-      <TeamBadge team={team} />
+      <TeamLogo team={team} />
       <div className="team-card-copy">
         <span>{team.city}</span>
         <strong>{team.name}</strong>
@@ -69,7 +80,7 @@ function HomePage() {
           <p>Browse every roster, move starters around, compare stats and salaries, and eventually go as deep into the CBA as you want.</p>
         </div>
         <div className="hero-pill-row" aria-label="NBACAB feature preview">
-          <span>30 teams</span><span>Live rosters</span><span>Stats</span><span>Salaries</span><span>CBA engine</span>
+          <span>30 teams</span><span>Live rosters</span><span>Player photos</span><span>Stats</span><span>CBA engine</span>
         </div>
       </section>
       <TeamSection title="Eastern Conference" teamsForConference={east} />
@@ -119,16 +130,41 @@ function assignDepthChart(players) {
   return buckets
 }
 
+function Initials({ player }) {
+  return <span>{player.first_name?.[0]}{player.last_name?.[0]}</span>
+}
+
+function PlayerImage({ player, starter }) {
+  const [failed, setFailed] = useState(false)
+  const fullName = `${player.first_name} ${player.last_name}`
+
+  return (
+    <div className={`player-image-wrap ${starter ? 'starter-image-wrap' : ''}`}>
+      {player.image_url && !failed ? (
+        <img
+          className="player-image"
+          src={player.image_url}
+          alt={fullName}
+          loading="lazy"
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        <div className="player-image-fallback" aria-label={fullName}>
+          <Initials player={player} />
+        </div>
+      )}
+    </div>
+  )
+}
+
 function PlayerCard({ player, starter }) {
   const fullName = `${player.first_name} ${player.last_name}`
   return (
-    <article className={`player-card ${starter ? 'starter-card' : ''}`}>
-      <div className="player-avatar" aria-hidden="true">
-        <span>{player.first_name?.[0]}{player.last_name?.[0]}</span>
-      </div>
+    <article className={`player-card ${starter ? 'starter-card' : 'bench-card'}`}>
+      <PlayerImage player={player} starter={starter} />
       <div className="player-card-copy">
         <div className="player-topline">
-          <strong>{fullName}</strong>
+          <strong title={fullName}>{fullName}</strong>
           {player.jersey_number ? <span className="jersey">#{player.jersey_number}</span> : null}
         </div>
         <div className="player-meta">
@@ -137,7 +173,7 @@ function PlayerCard({ player, starter }) {
           {player.weight ? <span>{player.weight} lb</span> : null}
         </div>
         <div className="player-detail-row">
-          <span>{starter ? 'Starter slot' : 'Bench'}</span>
+          <span>{starter ? 'Starter' : 'Bench'}</span>
           {player.country ? <span>{player.country}</span> : null}
         </div>
       </div>
@@ -169,7 +205,7 @@ function LoadingRoster() {
       <div className="loading-dot" />
       <div>
         <strong>Loading live roster…</strong>
-        <span>Pulling active players from BALLDONTLIE.</span>
+        <span>Pulling players and matching headshots.</span>
       </div>
     </div>
   )
@@ -179,6 +215,7 @@ function TeamPage() {
   const { teamAbbr } = useParams()
   const team = teams.find((item) => item.abbr.toLowerCase() === teamAbbr?.toLowerCase())
   const [players, setPlayers] = useState([])
+  const [imageMatches, setImageMatches] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -190,10 +227,12 @@ function TeamPage() {
       setLoading(true)
       setError('')
       try {
-        const response = await fetch(`/api/roster?teamId=${team.id}`, { signal: controller.signal })
+        const params = new URLSearchParams({ teamId: String(team.id), teamAbbr: team.abbr })
+        const response = await fetch(`/api/roster?${params.toString()}`, { signal: controller.signal })
         const payload = await response.json()
         if (!response.ok) throw new Error(payload?.error || 'Unable to load roster.')
         setPlayers(Array.isArray(payload?.data) ? payload.data : [])
+        setImageMatches(Number(payload?.imageMatches || 0))
       } catch (err) {
         if (err.name !== 'AbortError') setError(err.message || 'Unable to load roster.')
       } finally {
@@ -203,7 +242,7 @@ function TeamPage() {
 
     loadRoster()
     return () => controller.abort()
-  }, [team?.id])
+  }, [team?.id, team?.abbr])
 
   const depthChart = useMemo(() => assignDepthChart(players), [players])
   if (!team) return <Navigate to="/" replace />
@@ -213,19 +252,19 @@ function TeamPage() {
       <Link to="/" className="back-link">← All teams</Link>
 
       <section className="team-hero">
-        <TeamBadge team={team} />
+        <TeamLogo team={team} size="large" />
         <div>
           <span className="eyebrow">{team.conference}ern Conference</span>
           <h1>{team.city} {team.name}</h1>
-          <p>Current active roster from BALLDONTLIE, organized into an NBACAB depth-chart view.</p>
+          <p>A visual live roster. Player data comes from BALLDONTLIE; headshots are matched from ESPN's roster feed.</p>
         </div>
       </section>
 
       <section className="status-strip">
         <div><span>Roster</span><strong>{loading ? 'Loading…' : `${players.length} active`}</strong></div>
-        <div><span>Data</span><strong>BALLDONTLIE</strong></div>
+        <div><span>Photos</span><strong>{loading ? 'Matching…' : `${imageMatches}/${players.length} matched`}</strong></div>
         <div><span>Stats</span><strong>Next build</strong></div>
-        <div><span>Salaries</span><strong>Data source next</strong></div>
+        <div><span>Salaries</span><strong>Coming after stats</strong></div>
       </section>
 
       <section className="depth-chart-section">
@@ -234,7 +273,7 @@ function TeamPage() {
             <span className="eyebrow">Live roster</span>
             <h2>Depth chart</h2>
           </div>
-          <span className="team-count">Position layout is provisional</span>
+          <span className="team-count">Starter order is provisional</span>
         </div>
 
         {loading ? <LoadingRoster /> : null}
@@ -253,7 +292,7 @@ function TeamPage() {
               ))}
             </div>
             <p className="roster-footnote">
-              BALLDONTLIE supplies listed positions such as G, F and C. NBACAB is temporarily distributing combo positions across PG/SG/SF/PF/C until we add our editable depth-chart layer.
+              NBACAB currently uses BALLDONTLIE's listed G/F/C positions to create a temporary five-position layout. The next roster feature will let you move players and choose the starters yourself.
             </p>
           </>
         ) : null}

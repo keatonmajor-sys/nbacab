@@ -2,25 +2,27 @@
 
 NBA Coffee & Burritos — a visual NBA roster, stats, salary and CBA playground.
 
-## V2: live rosters
+## V3
 
 This build includes:
 
 - React + Vite
 - React Router
 - All 30 NBA teams on the home page
-- Clickable team routes
-- A secure Vercel serverless proxy at `/api/roster`
-- Live active-player rosters from BALLDONTLIE
-- A provisional visual PG / SG / SF / PF / C depth-chart layout
-- No BALLDONTLIE API key exposed to the browser or committed to GitHub
+- Team logos
+- Live active rosters from BALLDONTLIE through a private Vercel API route
+- Player headshot matching from ESPN team roster data, with initials fallbacks
+- Visual PG / SG / SF / PF / C depth-chart layout
+- Large starter cards with player cutouts
+- Responsive mobile layout
+- No API key or secret committed to GitHub
 
-## Required Vercel environment variable
+## Environment variable
+
+Vercel must contain:
 
 `BALLDONTLIE_API_KEY`
 
-The value should be stored as a Vercel Secret for Production, Preview and Development.
-
 ## Next build
 
-Add better roster ordering / editable starters, player imagery, and season stats.
+Add current player statistics, followed by editable/saved depth charts and salary/contract data.
