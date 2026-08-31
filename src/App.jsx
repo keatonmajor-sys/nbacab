@@ -3,6 +3,10 @@ import { Link, Navigate, Route, Routes, useParams } from 'react-router-dom'
 import { teams } from './data/teams.js'
 
 const POSITION_ORDER = ['PG', 'SG', 'SF', 'PF', 'C']
+const MOBILE_STAT_OPTIONS = [
+  ['PTS', 'pts'], ['REB', 'reb'], ['AST', 'ast'], ['FG%', 'fgPct'], ['3P%', 'fg3Pct'],
+  ['FT%', 'ftPct'], ['3PM', 'fg3m'], ['STL', 'stl'], ['BLK', 'blk'], ['TOV', 'turnover'],
+]
 
 const EXPECTED_STARTERS = {
   POR: { PG: 'Ja Morant', SG: 'Damian Lillard', SF: 'Deni Avdija', PF: 'Toumani Camara', C: 'Donovan Clingan' },
@@ -270,19 +274,38 @@ function CardStats({ stats, compact = false }) {
   )
 }
 
-function PlayerCard({ player, starter, stats, statsLoading, onOpen, editMode, onDragStart, onDragEnd, onDropBefore, onMove }) {
-  const name = fullName(player)
+function mobileStatValue(stats, statKey) {
+  if (!stats || !stats.gamesPlayed) return '—'
+  const value = stats[statKey]
+  if (value === undefined || value === null) return '—'
+  return ['fgPct', 'fg3Pct', 'ftPct'].includes(statKey) ? `${value}%` : value
+}
+
+function DropSlot({ position, index, editMode, onDropAt, visible = false }) {
+  if (!editMode) return null
   return (
-    <article
-      className={`player-card ${starter ? 'starter-card' : 'bench-card'} ${editMode ? 'is-editing' : ''}`}
-      onDragOver={(event) => editMode && event.preventDefault()}
+    <div
+      className={`depth-drop-slot ${visible ? 'starter-slot' : ''}`}
+      onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'move' }}
+      onDragEnter={(event) => event.currentTarget.classList.add('is-over')}
+      onDragLeave={(event) => event.currentTarget.classList.remove('is-over')}
       onDrop={(event) => {
-        if (!editMode) return
         event.preventDefault()
         event.stopPropagation()
-        onDropBefore(event, player)
+        event.currentTarget.classList.remove('is-over')
+        onDropAt(event, position, index)
       }}
     >
+      <span>{index === 0 ? `Start ${position}` : `Drop at ${position} #${index + 1}`}</span>
+    </div>
+  )
+}
+
+function PlayerCard({ player, starter, stats, statsLoading, onOpen, editMode, onDragStart, onDragEnd, onMove, mobileStatKey }) {
+  const name = fullName(player)
+  const mobileLabel = MOBILE_STAT_OPTIONS.find(([, key]) => key === mobileStatKey)?.[0] || 'PTS'
+  return (
+    <article className={`player-card ${starter ? 'starter-card' : 'bench-card'} ${editMode ? 'is-editing' : ''}`}>
       <div
         className={`player-photo-drag-zone ${editMode ? 'can-drag' : ''}`}
         draggable={editMode}
@@ -293,12 +316,7 @@ function PlayerCard({ player, starter, stats, statsLoading, onOpen, editMode, on
         <PlayerImage player={player} starter={starter} />
         {editMode ? <span className="drag-photo-label">DRAG</span> : null}
       </div>
-      <button
-        type="button"
-        className="player-info-button"
-        onClick={() => onOpen(player)}
-        aria-label={`Open ${name} details`}
-      >
+      <button type="button" className="player-info-button" onClick={() => onOpen(player)} aria-label={`Open ${name} details`}>
         <div className="player-card-copy">
           <div className="player-topline">
             <strong title={name}>{name}</strong>
@@ -309,65 +327,43 @@ function PlayerCard({ player, starter, stats, statsLoading, onOpen, editMode, on
             {player.height ? <span>{player.height}</span> : null}
             {player.weight ? <span>{player.weight} lb</span> : null}
           </div>
-          {statsLoading ? (
-            <div className="stats-loading-line" aria-label="Loading stats"><span /><span /><span /></div>
-          ) : (
-            <CardStats stats={stats} compact={!starter} />
-          )}
+          <div className="desktop-card-stats">
+            {statsLoading ? <div className="stats-loading-line" aria-label="Loading stats"><span /><span /><span /></div> : <CardStats stats={stats} compact={!starter} />}
+          </div>
+          <div className="mobile-one-stat" aria-label={`${mobileLabel} ${mobileStatValue(stats, mobileStatKey)}`}>
+            <strong>{statsLoading ? '…' : mobileStatValue(stats, mobileStatKey)}</strong><span>{mobileLabel}</span>
+          </div>
         </div>
       </button>
-      {editMode ? (
-        <button type="button" className="move-player-button" onClick={() => onMove(player)} aria-label={`Move ${name}`}>
-          Move
-        </button>
-      ) : null}
+      {editMode ? <button type="button" className="move-player-button" onClick={() => onMove(player)} aria-label={`Move ${name}`}>Move</button> : null}
     </article>
   )
 }
 
-function PositionColumn({ label, players, statsByPlayer, statsLoading, onOpenPlayer, editMode, onDragStart, onDragEnd, onDropAt, onMovePlayer }) {
+function PositionColumn({ label, players, statsByPlayer, statsLoading, onOpenPlayer, editMode, onDragStart, onDragEnd, onDropAt, onMovePlayer, mobileStatKey }) {
   return (
-    <div
-      className={`position-column ${editMode ? 'editable-column' : ''}`}
-      onDragOver={(event) => editMode && event.preventDefault()}
-      onDrop={(event) => {
-        if (!editMode) return
-        event.preventDefault()
-        onDropAt(event, label, players.length)
-      }}
-    >
-      <div
-        className="position-label"
-        onDragOver={(event) => editMode && event.preventDefault()}
-        onDrop={(event) => {
-          if (!editMode) return
-          event.preventDefault()
-          event.stopPropagation()
-          onDropAt(event, label, 0)
-        }}
-      >
-        <strong>{label}</strong>
-        <span>{players.length}</span>
-      </div>
-      {editMode ? <div className="starter-drop-hint">Drop here to start at {label}</div> : null}
+    <div className={`position-column ${editMode ? 'editable-column' : ''}`}>
+      <div className="position-label"><strong>{label}</strong><span>{players.length}</span></div>
       <div className="position-stack">
-        {players.length ? players.map((player, index) => (
-          <PlayerCard
-            key={player.id}
-            player={player}
-            starter={index === 0}
-            stats={statsByPlayer[player.id]}
-            statsLoading={statsLoading}
-            onOpen={onOpenPlayer}
-            editMode={editMode}
-            onDragStart={onDragStart}
-            onDragEnd={onDragEnd}
-            onDropBefore={(event, targetPlayer) => onDropAt(event, label, index, targetPlayer)}
-            onMove={onMovePlayer}
-          />
-        )) : (
-          <div className="empty-position">{editMode ? `Drop any player at ${label}` : 'No player assigned'}</div>
-        )}
+        <DropSlot position={label} index={0} editMode={editMode} onDropAt={onDropAt} visible />
+        {players.map((player, index) => (
+          <div className="depth-entry" key={player.id}>
+            <PlayerCard
+              player={player}
+              starter={index === 0}
+              stats={statsByPlayer[player.id]}
+              statsLoading={statsLoading}
+              onOpen={onOpenPlayer}
+              editMode={editMode}
+              onDragStart={onDragStart}
+              onDragEnd={onDragEnd}
+              onMove={onMovePlayer}
+              mobileStatKey={mobileStatKey}
+            />
+            <DropSlot position={label} index={index + 1} editMode={editMode} onDropAt={onDropAt} />
+          </div>
+        ))}
+        {!players.length ? <div className="empty-position">{editMode ? `Drop any player at ${label}` : 'No player assigned'}</div> : null}
       </div>
     </div>
   )
@@ -570,6 +566,7 @@ function TeamPage() {
   const [customLineup, setCustomLineup] = useState(false)
   const [movePlayerTarget, setMovePlayerTarget] = useState(null)
   const [draggingPlayerId, setDraggingPlayerId] = useState(null)
+  const [mobileStatKey, setMobileStatKey] = useState('pts')
 
   useEffect(() => {
     if (!team || !players.length) return
@@ -680,6 +677,12 @@ function TeamPage() {
               ? 'Expected starters: Ja Morant · Damian Lillard · Deni Avdija · Toumani Camara · Donovan Clingan.'
               : 'NBACAB is using a provisional expected lineup until our expected-starter data feed is added.'}
         </p>
+        <div className="mobile-stat-picker">
+          <label htmlFor="mobile-stat-select">Mobile card stat</label>
+          <select id="mobile-stat-select" value={mobileStatKey} onChange={(event) => setMobileStatKey(event.target.value)}>
+            {MOBILE_STAT_OPTIONS.map(([label, key]) => <option key={key} value={key}>{label}</option>)}
+          </select>
+        </div>
 
         {loading ? <LoadingRoster /> : null}
         {error ? (
@@ -711,6 +714,7 @@ function TeamPage() {
                   onDragEnd={handleDragEnd}
                   onDropAt={handleDropAt}
                   onMovePlayer={setMovePlayerTarget}
+                  mobileStatKey={mobileStatKey}
                 />
               ))}
             </div>

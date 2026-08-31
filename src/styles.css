@@ -277,3 +277,58 @@ button { font: inherit; }
 @media (max-width:520px) {
   .card-stats { grid-template-columns:repeat(5,minmax(0,1fr)); }
 }
+
+/* V7: true depth slots + five-column mobile view */
+.depth-entry { min-width:0; }
+.depth-drop-slot { height:10px; margin:3px 0; border:1px dashed transparent; border-radius:8px; transition:height .12s ease,border-color .12s ease,background .12s ease; }
+.depth-drop-slot span { display:none; }
+.drag-active .depth-drop-slot { height:24px; border-color:rgba(255,157,86,.22); background:rgba(255,157,86,.025); }
+.drag-active .depth-drop-slot span { display:block; padding-top:6px; color:#9f795d; font-size:.48rem; font-weight:800; text-align:center; }
+.depth-drop-slot.is-over { height:42px !important; border-color:#ff9d56 !important; background:rgba(255,157,86,.12) !important; }
+.depth-drop-slot.is-over span { color:#ffc18e; }
+.depth-drop-slot.starter-slot { margin-top:0; }
+.mobile-one-stat,.mobile-stat-picker { display:none; }
+
+@media (max-width:720px) {
+  .app-shell { width:calc(100% - 16px); }
+  .depth-chart-section { overflow:visible; }
+  .depth-chart-grid.live-grid { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:5px; width:100%; overflow:visible; }
+  .position-column { min-width:0; }
+  .position-label { gap:2px; }
+  .position-label strong { font-size:.62rem; }
+  .position-label span { width:20px; height:20px; font-size:.56rem; }
+  .position-stack { gap:5px; }
+  .player-card,.bench-card,.starter-card { display:block; min-width:0; border-radius:10px; overflow:hidden; }
+  .player-photo-drag-zone,.bench-card .player-photo-drag-zone,.starter-card .player-photo-drag-zone { width:100%; height:auto; min-height:0; aspect-ratio:1 / .9; display:block; }
+  .player-image-wrap,.starter-image-wrap { width:100%; height:100%; min-height:0; }
+  .player-image { width:100%; height:100%; object-fit:contain; object-position:center bottom; }
+  .player-card-copy { padding:5px 4px 7px !important; }
+  .player-topline { display:block; }
+  .player-topline strong { display:block; overflow:hidden; font-size:.55rem; line-height:1.05; white-space:nowrap; text-overflow:ellipsis; }
+  .player-topline .jersey,.player-meta,.desktop-card-stats { display:none; }
+  .mobile-one-stat { display:flex; align-items:baseline; gap:3px; margin-top:4px; }
+  .mobile-one-stat strong { font-size:.7rem; line-height:1; }
+  .mobile-one-stat span { color:#7c8493; font-size:.4rem; font-weight:900; letter-spacing:.04em; }
+  .move-player-button { position:static; width:100%; min-height:24px; margin:0; border-width:1px 0 0; border-radius:0; font-size:.46rem; }
+  .player-card.is-editing .player-info-button { padding-bottom:0; }
+  .drag-photo-label { left:3px; bottom:3px; padding:2px 3px; font-size:.34rem; }
+  .starter-card { border-color:rgba(255,157,86,.32); }
+  .depth-drop-slot { height:5px; margin:1px 0; }
+  .drag-active .depth-drop-slot { height:18px; }
+  .drag-active .depth-drop-slot span { padding-top:4px; font-size:.34rem; }
+  .depth-drop-slot.is-over { height:28px !important; }
+  .starter-drop-hint { display:none; }
+  .mobile-stat-picker { display:flex; align-items:center; justify-content:flex-end; gap:8px; margin:-6px 0 12px; }
+  .mobile-stat-picker label { color:#808797; font-size:.68rem; }
+  .mobile-stat-picker select { min-height:34px; padding:0 26px 0 9px; border:1px solid rgba(255,255,255,.1); border-radius:10px; background:#151922; color:#f5f6f9; font-size:16px; }
+  .roster-footnote { font-size:.66rem; }
+}
+
+@media (max-width:420px) {
+  .app-shell { width:calc(100% - 10px); }
+  .depth-chart-grid.live-grid { gap:3px; }
+  .player-card-copy { padding-left:3px !important; padding-right:3px !important; }
+  .player-topline strong { font-size:.49rem; }
+  .mobile-one-stat strong { font-size:.62rem; }
+  .mobile-one-stat span { font-size:.34rem; }
+}
