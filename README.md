@@ -72,3 +72,13 @@ NBACAB no longer assumes a single roster API is always current during the offsea
 - Contracts, stats and cap calculations automatically operate on the reconciled roster returned to the frontend, so stale players no longer contaminate downstream team data.
 
 The emergency override list is not intended to become a manually curated roster database. It is a safety valve. Confirmed transaction parsing and primary/secondary roster feeds remain the normal path.
+
+
+## V17 — projected starters + rotation depth charts
+- Adds `/api/depth-chart.js`. RealGM is the primary projected depth-chart source for all 30 teams.
+- ESPN is the free secondary starter-validation source. RotoWire is also queried opportunistically, but its full depth charts may be subscriber-only. RealGM remains the primary rotation-order source.
+- Maps projected PG/SG/SF/PF/C starter and rotation order onto NBACAB's reconciled live roster.
+- External depth-chart rows never add stale/non-roster players by themselves; unmatched names are ignored and all reconciled roster players are retained.
+- Adds lineup source, season and confidence/source-agreement messaging.
+- Saved user lineups remain untouched and continue to override projected lineup ordering on that device.
+- Reset Expected now returns to the latest projected depth chart instead of the old provisional algorithm whenever the feed is available.

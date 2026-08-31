@@ -556,3 +556,14 @@ button { font: inherit; }
   .roster-verification { align-items: flex-start; flex-direction: column; gap: 4px; padding: 9px 10px; margin-bottom: 14px; }
   .roster-verification > div { align-items: flex-start; flex-direction: column; gap: 2px; }
 }
+
+/* V17: projected lineup provenance */
+.lineup-context-row { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin:-6px 0 18px; }
+.lineup-context-row .lineup-context { margin:0; flex:1; }
+.lineup-confidence { flex:0 0 auto; display:inline-flex; align-items:center; min-height:28px; padding:5px 9px; border:1px solid #2d323d; border-radius:999px; color:#aeb5c2; background:#11141b; font-size:.66rem; font-weight:800; letter-spacing:.04em; white-space:nowrap; }
+.lineup-confidence.high { border-color:rgba(255,157,86,.42); color:#ffad75; background:rgba(255,157,86,.07); }
+.lineup-confidence.low { color:#c5cad3; border-style:dashed; }
+@media (max-width:720px) {
+  .lineup-context-row { flex-direction:column; gap:8px; margin-bottom:16px; }
+  .lineup-confidence { font-size:.6rem; min-height:25px; padding:4px 8px; }
+}

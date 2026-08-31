@@ -158,30 +158,72 @@ function assignDepthChart(players) {
   return buckets
 }
 
-function buildExpectedDepthChart(players, teamAbbr) {
-  const buckets = assignDepthChart(players)
-  const expected = EXPECTED_STARTERS[teamAbbr]
-  if (!expected) return buckets
+function projectionNameParts(value = '') {
+  return String(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z.\- ']/g, '').trim().split(/\s+/).filter(Boolean)
+}
 
+function matchProjectedPlayer(name, players, usedIds = new Set()) {
+  if (!name) return null
+  const wanted = normalizePlayerName(name)
+  let exact = players.find((player) => !usedIds.has(player.id) && normalizePlayerName(fullName(player)) === wanted)
+  if (exact) return exact
+
+  const parts = projectionNameParts(name)
+  const last = normalizePlayerName(parts.at(-1) || '')
+  const firstInitial = normalizePlayerName(parts[0] || '')[0]
+  const candidates = players.filter((player) => {
+    if (usedIds.has(player.id)) return false
+    const playerLast = normalizePlayerName(player.last_name || '')
+    if (!last || playerLast !== last) return false
+    return !firstInitial || normalizePlayerName(player.first_name || '')[0] === firstInitial
+  })
+  return candidates.length === 1 ? candidates[0] : null
+}
+
+function buildExpectedDepthChart(players, teamAbbr, projection = null) {
+  const fallback = assignDepthChart(players)
+  const projectionChart = projection?.chart
+
+  if (projectionChart && POSITION_ORDER.some((position) => Array.isArray(projectionChart[position]) && projectionChart[position].length)) {
+    const chart = Object.fromEntries(POSITION_ORDER.map((position) => [position, []]))
+    const used = new Set()
+    for (const position of POSITION_ORDER) {
+      for (const projectedName of projectionChart[position] || []) {
+        const player = matchProjectedPlayer(projectedName, players, used)
+        if (!player) continue
+        chart[position].push(player)
+        used.add(player.id)
+      }
+    }
+    // Any roster player not present in the external projection is retained using
+    // NBACAB's provisional position assignment so the depth chart never loses a player.
+    for (const position of POSITION_ORDER) {
+      for (const player of fallback[position]) {
+        if (!used.has(player.id)) {
+          chart[position].push(player)
+          used.add(player.id)
+        }
+      }
+    }
+    return chart
+  }
+
+  const expected = EXPECTED_STARTERS[teamAbbr]
+  if (!expected) return fallback
+  const buckets = fallback
   const playerByName = new Map(players.map((player) => [fullName(player).toLowerCase(), player]))
   const forcedIds = new Set()
-
   for (const position of POSITION_ORDER) {
     const starterName = expected[position]
     const player = starterName ? playerByName.get(starterName.toLowerCase()) : null
     if (player) forcedIds.add(player.id)
   }
-
-  for (const position of POSITION_ORDER) {
-    buckets[position] = buckets[position].filter((player) => !forcedIds.has(player.id))
-  }
-
+  for (const position of POSITION_ORDER) buckets[position] = buckets[position].filter((player) => !forcedIds.has(player.id))
   for (const position of POSITION_ORDER) {
     const starterName = expected[position]
     const player = starterName ? playerByName.get(starterName.toLowerCase()) : null
     if (player) buckets[position] = [player, ...buckets[position]]
   }
-
   return buckets
 }
 
@@ -581,6 +623,9 @@ function TeamPage() {
   const [players, setPlayers] = useState([])
   const [imageMatches, setImageMatches] = useState(0)
   const [rosterVerification, setRosterVerification] = useState(null)
+  const [projectedLineup, setProjectedLineup] = useState(null)
+  const [projectedLineupLoading, setProjectedLineupLoading] = useState(false)
+  const [projectedLineupError, setProjectedLineupError] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [statsByPlayer, setStatsByPlayer] = useState({})
@@ -627,6 +672,31 @@ function TeamPage() {
     loadRoster()
     return () => controller.abort()
   }, [team?.id, team?.abbr])
+
+  useEffect(() => {
+    if (!team || !players.length) return
+    const controller = new AbortController()
+    async function loadProjectedLineup() {
+      setProjectedLineupLoading(true)
+      setProjectedLineupError('')
+      try {
+        const params = new URLSearchParams({ teamAbbr: team.abbr })
+        const response = await fetch(`/api/depth-chart?${params.toString()}`, { signal: controller.signal })
+        const payload = await response.json()
+        if (!response.ok) throw new Error(payload?.error || 'Unable to load projected depth chart.')
+        setProjectedLineup(payload)
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          setProjectedLineup(null)
+          setProjectedLineupError(err.message || 'Unable to load projected depth chart.')
+        }
+      } finally {
+        if (!controller.signal.aborted) setProjectedLineupLoading(false)
+      }
+    }
+    loadProjectedLineup()
+    return () => controller.abort()
+  }, [team?.abbr, players.length])
 
   useEffect(() => {
     if (!players.length) return
@@ -711,7 +781,7 @@ function TeamPage() {
     loadContractDetail(); return () => controller.abort()
   }, [selectedPlayer?.id, contractsByPlayer, contractSeason])
 
-  const expectedDepthChart = useMemo(() => buildExpectedDepthChart(players, team?.abbr), [players, team?.abbr])
+  const expectedDepthChart = useMemo(() => buildExpectedDepthChart(players, team?.abbr, projectedLineup), [players, team?.abbr, projectedLineup])
   const [depthChart, setDepthChart] = useState(() => Object.fromEntries(POSITION_ORDER.map((position) => [position, []])))
   const editMode = true
   const [customLineup, setCustomLineup] = useState(false)
@@ -866,13 +936,25 @@ function TeamPage() {
             <button type="button" className="secondary-action" onClick={resetExpectedLineup}>Reset expected</button>
           </div>
         </div>
-        <p className="lineup-context">
-          {customLineup
-            ? 'This is your saved arrangement on this device. Move any player to any position.'
-            : team.abbr === 'POR'
-              ? 'Expected starters: Ja Morant · Damian Lillard · Deni Avdija · Toumani Camara · Donovan Clingan.'
-              : 'NBACAB is using a provisional expected lineup until our expected-starter data feed is added.'}
-        </p>
+        <div className="lineup-context-row">
+          <p className="lineup-context">
+            {customLineup
+              ? 'This is your saved arrangement on this device. Move any player to any position.'
+              : projectedLineup
+                ? `${projectedLineup.provider} projected depth chart · ${projectedLineup.seasonLabel}. Rotation order is mapped onto NBACAB's reconciled roster.`
+                : projectedLineupLoading
+                  ? 'Loading projected starters and rotation…'
+                  : projectedLineupError
+                    ? 'Projected lineup feed is unavailable, so NBACAB is using its provisional depth chart.'
+                    : 'NBACAB is using its provisional depth chart.'}
+          </p>
+          {!customLineup && projectedLineup ? (
+            <span className={`lineup-confidence ${projectedLineup.validation?.confidence || 'medium'}`}>
+              {projectedLineup.validation?.confidence === 'high' ? 'High confidence' : projectedLineup.validation?.confidence === 'low' ? 'Low confidence' : 'Projected'}
+              {projectedLineup.validation?.checked ? ` · ${projectedLineup.validation.agreements}/${projectedLineup.validation.checked} source agreement` : ''}
+            </span>
+          ) : null}
+        </div>
 
         {loading ? <LoadingRoster /> : null}
         {error ? (
