@@ -80,7 +80,7 @@ function HomePage() {
           <p>Browse every roster, move starters around, compare stats and salaries, and eventually go as deep into the CBA as you want.</p>
         </div>
         <div className="hero-pill-row" aria-label="NBACAB feature preview">
-          <span>30 teams</span><span>Live rosters</span><span>Player photos</span><span>Stats</span><span>CBA engine</span>
+          <span>30 teams</span><span>Live rosters</span><span>Player photos</span><span>Real stats</span><span>CBA engine</span>
         </div>
       </section>
       <TeamSection title="Eastern Conference" teamsForConference={east} />
@@ -112,7 +112,6 @@ function normalizedPositions(position = '') {
 
 function assignDepthChart(players) {
   const buckets = Object.fromEntries(POSITION_ORDER.map((position) => [position, []]))
-
   const sorted = [...players].sort((a, b) => {
     const aDraft = a.draft_number ?? 99
     const bDraft = b.draft_number ?? 99
@@ -126,7 +125,6 @@ function assignDepthChart(players) {
     ), options[0])
     buckets[target].push(player)
   }
-
   return buckets
 }
 
@@ -134,12 +132,12 @@ function Initials({ player }) {
   return <span>{player.first_name?.[0]}{player.last_name?.[0]}</span>
 }
 
-function PlayerImage({ player, starter }) {
+function PlayerImage({ player, starter = false, detail = false }) {
   const [failed, setFailed] = useState(false)
   const fullName = `${player.first_name} ${player.last_name}`
 
   return (
-    <div className={`player-image-wrap ${starter ? 'starter-image-wrap' : ''}`}>
+    <div className={`player-image-wrap ${starter ? 'starter-image-wrap' : ''} ${detail ? 'detail-image-wrap' : ''}`}>
       {player.image_url && !failed ? (
         <img
           className="player-image"
@@ -157,10 +155,29 @@ function PlayerImage({ player, starter }) {
   )
 }
 
-function PlayerCard({ player, starter }) {
+function StatTriplet({ stats, compact = false }) {
+  if (!stats || !stats.gamesPlayed) {
+    return <div className={`stat-triplet ${compact ? 'compact' : ''} unavailable`}><span>Stats unavailable</span></div>
+  }
+
+  return (
+    <div className={`stat-triplet ${compact ? 'compact' : ''}`} aria-label="Season averages">
+      <span><strong>{stats.pts}</strong><small>PTS</small></span>
+      <span><strong>{stats.reb}</strong><small>REB</small></span>
+      <span><strong>{stats.ast}</strong><small>AST</small></span>
+    </div>
+  )
+}
+
+function PlayerCard({ player, starter, stats, statsLoading, onOpen }) {
   const fullName = `${player.first_name} ${player.last_name}`
   return (
-    <article className={`player-card ${starter ? 'starter-card' : 'bench-card'}`}>
+    <button
+      type="button"
+      className={`player-card ${starter ? 'starter-card' : 'bench-card'}`}
+      onClick={() => onOpen(player)}
+      aria-label={`Open ${fullName} details`}
+    >
       <PlayerImage player={player} starter={starter} />
       <div className="player-card-copy">
         <div className="player-topline">
@@ -172,16 +189,17 @@ function PlayerCard({ player, starter }) {
           {player.height ? <span>{player.height}</span> : null}
           {player.weight ? <span>{player.weight} lb</span> : null}
         </div>
-        <div className="player-detail-row">
-          <span>{starter ? 'Starter' : 'Bench'}</span>
-          {player.country ? <span>{player.country}</span> : null}
-        </div>
+        {statsLoading ? (
+          <div className="stats-loading-line" aria-label="Loading stats"><span /><span /><span /></div>
+        ) : (
+          <StatTriplet stats={stats} compact={!starter} />
+        )}
       </div>
-    </article>
+    </button>
   )
 }
 
-function PositionColumn({ label, players }) {
+function PositionColumn({ label, players, statsByPlayer, statsLoading, onOpenPlayer }) {
   return (
     <div className="position-column">
       <div className="position-label">
@@ -190,11 +208,105 @@ function PositionColumn({ label, players }) {
       </div>
       <div className="position-stack">
         {players.length ? players.map((player, index) => (
-          <PlayerCard key={player.id} player={player} starter={index === 0} />
+          <PlayerCard
+            key={player.id}
+            player={player}
+            starter={index === 0}
+            stats={statsByPlayer[player.id]}
+            statsLoading={statsLoading}
+            onOpen={onOpenPlayer}
+          />
         )) : (
           <div className="empty-position">No player assigned</div>
         )}
       </div>
+    </div>
+  )
+}
+
+function Metric({ label, value }) {
+  return (
+    <div className="detail-metric">
+      <strong>{value}</strong>
+      <span>{label}</span>
+    </div>
+  )
+}
+
+function PlayerDetail({ player, stats, seasonLabel, onClose }) {
+  useEffect(() => {
+    if (!player) return undefined
+    function onKeyDown(event) {
+      if (event.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [player, onClose])
+
+  if (!player) return null
+  const fullName = `${player.first_name} ${player.last_name}`
+  const hasStats = stats && stats.gamesPlayed > 0
+
+  return (
+    <div className="player-detail-backdrop" role="presentation" onMouseDown={(event) => {
+      if (event.target === event.currentTarget) onClose()
+    }}>
+      <section className="player-detail-panel" role="dialog" aria-modal="true" aria-label={`${fullName} details`}>
+        <button type="button" className="detail-close" onClick={onClose} aria-label="Close player details">×</button>
+        <div className="detail-hero">
+          <PlayerImage player={player} detail />
+          <div className="detail-hero-copy">
+            <span className="eyebrow">Player profile</span>
+            <h2>{fullName}</h2>
+            <p>
+              {player.position || 'Position —'}
+              {player.jersey_number ? ` · #${player.jersey_number}` : ''}
+              {player.height ? ` · ${player.height}` : ''}
+              {player.weight ? ` · ${player.weight} lb` : ''}
+            </p>
+            <div className="detail-tags">
+              {player.country ? <span>{player.country}</span> : null}
+              {player.college ? <span>{player.college}</span> : null}
+              {player.draft_year ? <span>Draft {player.draft_year}{player.draft_round ? ` · R${player.draft_round}` : ''}{player.draft_number ? ` · #${player.draft_number}` : ''}</span> : <span>Undrafted</span>}
+            </div>
+          </div>
+        </div>
+
+        <div className="detail-section-heading">
+          <div>
+            <span className="eyebrow">{seasonLabel || 'Season'} regular season</span>
+            <h3>Per-game stats</h3>
+          </div>
+          {hasStats ? <span className="team-count">{stats.gamesPlayed} GP</span> : null}
+        </div>
+
+        {hasStats ? (
+          <>
+            <div className="detail-primary-stats">
+              <Metric label="PTS" value={stats.pts} />
+              <Metric label="REB" value={stats.reb} />
+              <Metric label="AST" value={stats.ast} />
+              <Metric label="STL" value={stats.stl} />
+              <Metric label="BLK" value={stats.blk} />
+              <Metric label="MIN" value={stats.min} />
+            </div>
+            <div className="detail-shooting-stats">
+              <Metric label="FG%" value={`${stats.fgPct}%`} />
+              <Metric label="3P%" value={`${stats.fg3Pct}%`} />
+              <Metric label="FT%" value={`${stats.ftPct}%`} />
+              <Metric label="TOV" value={stats.turnover} />
+              <Metric label="+/-" value={stats.plusMinus > 0 ? `+${stats.plusMinus}` : stats.plusMinus} />
+            </div>
+          </>
+        ) : (
+          <div className="detail-empty">No regular-season game stats were returned for this player in {seasonLabel || 'the selected season'}.</div>
+        )}
+
+        <div className="detail-coming">
+          <span>Next on this card</span>
+          <strong>Salary · Contract years · CBA status</strong>
+        </div>
+      </section>
     </div>
   )
 }
@@ -218,6 +330,11 @@ function TeamPage() {
   const [imageMatches, setImageMatches] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [statsByPlayer, setStatsByPlayer] = useState({})
+  const [statsLoading, setStatsLoading] = useState(false)
+  const [statsError, setStatsError] = useState('')
+  const [seasonLabel, setSeasonLabel] = useState('')
+  const [selectedPlayer, setSelectedPlayer] = useState(null)
 
   useEffect(() => {
     if (!team) return
@@ -226,6 +343,10 @@ function TeamPage() {
     async function loadRoster() {
       setLoading(true)
       setError('')
+      setPlayers([])
+      setStatsByPlayer({})
+      setStatsError('')
+      setSeasonLabel('')
       try {
         const params = new URLSearchParams({ teamId: String(team.id), teamAbbr: team.abbr })
         const response = await fetch(`/api/roster?${params.toString()}`, { signal: controller.signal })
@@ -244,6 +365,31 @@ function TeamPage() {
     return () => controller.abort()
   }, [team?.id, team?.abbr])
 
+  useEffect(() => {
+    if (!players.length) return
+    const controller = new AbortController()
+
+    async function loadStats() {
+      setStatsLoading(true)
+      setStatsError('')
+      try {
+        const playerIds = players.map((player) => player.id).join(',')
+        const response = await fetch(`/api/stats?playerIds=${encodeURIComponent(playerIds)}`, { signal: controller.signal })
+        const payload = await response.json()
+        if (!response.ok) throw new Error(payload?.error || 'Unable to load stats.')
+        setStatsByPlayer(payload?.stats || {})
+        setSeasonLabel(payload?.seasonLabel || '')
+      } catch (err) {
+        if (err.name !== 'AbortError') setStatsError(err.message || 'Unable to load stats.')
+      } finally {
+        if (!controller.signal.aborted) setStatsLoading(false)
+      }
+    }
+
+    loadStats()
+    return () => controller.abort()
+  }, [players])
+
   const depthChart = useMemo(() => assignDepthChart(players), [players])
   if (!team) return <Navigate to="/" replace />
 
@@ -256,15 +402,15 @@ function TeamPage() {
         <div>
           <span className="eyebrow">{team.conference}ern Conference</span>
           <h1>{team.city} {team.name}</h1>
-          <p>A visual live roster. Player data comes from BALLDONTLIE; headshots are matched from ESPN's roster feed.</p>
+          <p>Live roster, player photos and real box-score averages — designed to be understood at a glance.</p>
         </div>
       </section>
 
       <section className="status-strip">
         <div><span>Roster</span><strong>{loading ? 'Loading…' : `${players.length} active`}</strong></div>
         <div><span>Photos</span><strong>{loading ? 'Matching…' : `${imageMatches}/${players.length} matched`}</strong></div>
-        <div><span>Stats</span><strong>Next build</strong></div>
-        <div><span>Salaries</span><strong>Coming after stats</strong></div>
+        <div><span>Stats</span><strong>{statsLoading ? 'Calculating…' : statsError ? 'Unavailable' : seasonLabel ? `${seasonLabel} live` : 'Waiting…'}</strong></div>
+        <div><span>Salaries</span><strong>Next layer</strong></div>
       </section>
 
       <section className="depth-chart-section">
@@ -273,7 +419,7 @@ function TeamPage() {
             <span className="eyebrow">Live roster</span>
             <h2>Depth chart</h2>
           </div>
-          <span className="team-count">Starter order is provisional</span>
+          <span className="team-count">Tap any player</span>
         </div>
 
         {loading ? <LoadingRoster /> : null}
@@ -283,20 +429,40 @@ function TeamPage() {
             <span>{error}</span>
           </div>
         ) : null}
+        {statsError ? (
+          <div className="stats-warning" role="status">
+            <strong>Roster is live; stats are temporarily unavailable.</strong>
+            <span>{statsError}</span>
+          </div>
+        ) : null}
 
         {!loading && !error ? (
           <>
             <div className="depth-chart-grid live-grid">
               {POSITION_ORDER.map((position) => (
-                <PositionColumn key={position} label={position} players={depthChart[position]} />
+                <PositionColumn
+                  key={position}
+                  label={position}
+                  players={depthChart[position]}
+                  statsByPlayer={statsByPlayer}
+                  statsLoading={statsLoading}
+                  onOpenPlayer={setSelectedPlayer}
+                />
               ))}
             </div>
             <p className="roster-footnote">
-              NBACAB currently uses BALLDONTLIE's listed G/F/C positions to create a temporary five-position layout. The next roster feature will let you move players and choose the starters yourself.
+              Stats are calculated from BALLDONTLIE regular-season game box scores because season-average endpoints require GOAT. Position placement is still provisional until the editable depth-chart layer is added.
             </p>
           </>
         ) : null}
       </section>
+
+      <PlayerDetail
+        player={selectedPlayer}
+        stats={selectedPlayer ? statsByPlayer[selectedPlayer.id] : null}
+        seasonLabel={seasonLabel}
+        onClose={() => setSelectedPlayer(null)}
+      />
     </AppShell>
   )
 }

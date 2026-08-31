@@ -2,27 +2,24 @@
 
 NBA Coffee & Burritos — a visual NBA roster, stats, salary and CBA playground.
 
-## V3
+## V4
 
 This build includes:
 
 - React + Vite
-- React Router
-- All 30 NBA teams on the home page
-- Team logos
-- Live active rosters from BALLDONTLIE through a private Vercel API route
-- Player headshot matching from ESPN team roster data, with initials fallbacks
-- Visual PG / SG / SF / PF / C depth-chart layout
-- Large starter cards with player cutouts
-- Responsive mobile layout
-- No API key or secret committed to GitHub
+- All 30 NBA teams
+- Live active rosters from BALLDONTLIE
+- Team logos and matched player headshots
+- 2025-26 (or latest applicable season) regular-season averages calculated from BALLDONTLIE game-player stats
+- PTS / REB / AST directly on roster cards
+- Click/tap player detail panels with shooting percentages and additional per-game stats
+- Server-side API key protection through Vercel functions
+- Graceful fallbacks when photos or stats are unavailable
 
-## Environment variable
+## Data notes
 
-Vercel must contain:
-
-`BALLDONTLIE_API_KEY`
+The current ALL-STAR BALLDONTLIE plan includes Game Player Stats but not the Season Averages endpoint. NBACAB therefore calculates per-game averages from regular-season game stat rows and caches the result at the Vercel edge.
 
 ## Next build
 
-Add current player statistics, followed by editable/saved depth charts and salary/contract data.
+Editable depth charts and persistence, followed by salary/contract source integration and the CBA layer.
