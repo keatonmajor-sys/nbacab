@@ -14,3 +14,8 @@
 - Starter-on-starter drops now swap positions. Example: drag Luka onto Reaves and Luka becomes SG while Reaves becomes PG.
 - Each position still has a large end-of-depth drop zone while dragging, so adding someone to the bottom never requires hitting a tiny target.
 - Listed BALLDONTLIE positions remain reference-only and never restrict placement.
+
+## V9
+- Lineups are always editable; no Edit/Done mode required.
+- Reset expected is always available.
+- Mobile cards show six compact stats at once: PTS, REB, AST, BLK, STL, 3PM.

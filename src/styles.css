@@ -287,7 +287,7 @@ button { font: inherit; }
 .depth-drop-slot.is-over { height:42px !important; border-color:#ff9d56 !important; background:rgba(255,157,86,.12) !important; }
 .depth-drop-slot.is-over span { color:#ffc18e; }
 .depth-drop-slot.starter-slot { margin-top:0; }
-.mobile-one-stat,.mobile-stat-picker { display:none; }
+.mobile-one-stat,.mobile-quick-stats,.mobile-stat-picker { display:none; }
 
 @media (max-width:720px) {
   .app-shell { width:calc(100% - 16px); }
@@ -306,9 +306,10 @@ button { font: inherit; }
   .player-topline { display:block; }
   .player-topline strong { display:block; overflow:hidden; font-size:.55rem; line-height:1.05; white-space:nowrap; text-overflow:ellipsis; }
   .player-topline .jersey,.player-meta,.desktop-card-stats { display:none; }
-  .mobile-one-stat { display:flex; align-items:baseline; gap:3px; margin-top:4px; }
-  .mobile-one-stat strong { font-size:.7rem; line-height:1; }
-  .mobile-one-stat span { color:#7c8493; font-size:.4rem; font-weight:900; letter-spacing:.04em; }
+  .mobile-quick-stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:3px; margin-top:5px; }
+  .mobile-quick-stats span { min-width:0; padding:3px 1px; border:1px solid rgba(255,255,255,.07); border-radius:5px; background:rgba(255,255,255,.025); text-align:center; }
+  .mobile-quick-stats strong { display:block; overflow:hidden; font-size:.52rem; line-height:1; white-space:nowrap; text-overflow:ellipsis; }
+  .mobile-quick-stats small { display:block; margin-top:2px; color:#7c8493; font-size:.29rem; font-weight:900; letter-spacing:.03em; }
   .move-player-button { position:static; width:100%; min-height:24px; margin:0; border-width:1px 0 0; border-radius:0; font-size:.46rem; }
   .player-card.is-editing .player-info-button { padding-bottom:0; }
   .drag-photo-label { left:3px; bottom:3px; padding:2px 3px; font-size:.34rem; }
@@ -329,8 +330,10 @@ button { font: inherit; }
   .depth-chart-grid.live-grid { gap:3px; }
   .player-card-copy { padding-left:3px !important; padding-right:3px !important; }
   .player-topline strong { font-size:.49rem; }
-  .mobile-one-stat strong { font-size:.62rem; }
-  .mobile-one-stat span { font-size:.34rem; }
+  .mobile-quick-stats { gap:2px; }
+  .mobile-quick-stats span { padding:3px 0; }
+  .mobile-quick-stats strong { font-size:.46rem; }
+  .mobile-quick-stats small { font-size:.26rem; }
 }
 
 

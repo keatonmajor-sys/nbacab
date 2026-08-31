@@ -356,8 +356,13 @@ function PlayerCard({ player, starter, stats, statsLoading, onOpen, editMode, on
           <div className="desktop-card-stats">
             {statsLoading ? <div className="stats-loading-line" aria-label="Loading stats"><span /><span /><span /></div> : <CardStats stats={stats} compact={!starter} />}
           </div>
-          <div className="mobile-one-stat" aria-label={`${mobileLabel} ${mobileStatValue(stats, mobileStatKey)}`}>
-            <strong>{statsLoading ? '…' : mobileStatValue(stats, mobileStatKey)}</strong><span>{mobileLabel}</span>
+          <div className="mobile-quick-stats" aria-label="Mobile season averages">
+            {[
+              ['PTS', 'pts'], ['REB', 'reb'], ['AST', 'ast'],
+              ['BLK', 'blk'], ['STL', 'stl'], ['3PM', 'fg3m'],
+            ].map(([label, key]) => (
+              <span key={key}><strong>{statsLoading ? '…' : mobileStatValue(stats, key)}</strong><small>{label}</small></span>
+            ))}
           </div>
         </div>
       </button>
@@ -591,7 +596,7 @@ function TeamPage() {
 
   const expectedDepthChart = useMemo(() => buildExpectedDepthChart(players, team?.abbr), [players, team?.abbr])
   const [depthChart, setDepthChart] = useState(() => Object.fromEntries(POSITION_ORDER.map((position) => [position, []])))
-  const [editMode, setEditMode] = useState(false)
+  const editMode = true
   const [customLineup, setCustomLineup] = useState(false)
   const [movePlayerTarget, setMovePlayerTarget] = useState(null)
   const [draggingPlayerId, setDraggingPlayerId] = useState(null)
@@ -699,10 +704,7 @@ function TeamPage() {
             <h2>Depth chart</h2>
           </div>
           <div className="depth-chart-actions">
-            {customLineup ? <button type="button" className="secondary-action" onClick={resetExpectedLineup}>Reset expected</button> : null}
-            <button type="button" className={`edit-lineup-button ${editMode ? 'active' : ''}`} onClick={() => setEditMode((value) => !value)}>
-              {editMode ? 'Done editing' : 'Edit lineup'}
-            </button>
+            <button type="button" className="secondary-action" onClick={resetExpectedLineup}>Reset expected</button>
           </div>
         </div>
         <p className="lineup-context">
@@ -712,12 +714,6 @@ function TeamPage() {
               ? 'Expected starters: Ja Morant · Damian Lillard · Deni Avdija · Toumani Camara · Donovan Clingan.'
               : 'NBACAB is using a provisional expected lineup until our expected-starter data feed is added.'}
         </p>
-        <div className="mobile-stat-picker">
-          <label htmlFor="mobile-stat-select">Mobile card stat</label>
-          <select id="mobile-stat-select" value={mobileStatKey} onChange={(event) => setMobileStatKey(event.target.value)}>
-            {MOBILE_STAT_OPTIONS.map(([label, key]) => <option key={key} value={key}>{label}</option>)}
-          </select>
-        </div>
 
         {loading ? <LoadingRoster /> : null}
         {error ? (
