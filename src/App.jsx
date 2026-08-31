@@ -4,6 +4,18 @@ import { teams } from './data/teams.js'
 
 const POSITION_ORDER = ['PG', 'SG', 'SF', 'PF', 'C']
 
+const EXPECTED_STARTERS = {
+  POR: { PG: 'Ja Morant', SG: 'Damian Lillard', SF: 'Deni Avdija', PF: 'Toumani Camara', C: 'Donovan Clingan' },
+}
+
+function fullName(player) {
+  return `${player.first_name} ${player.last_name}`.trim()
+}
+
+function storageKey(teamAbbr) {
+  return `nbacab-depth-chart-v1:${teamAbbr}`
+}
+
 function AppShell({ children }) {
   return (
     <div className="app-shell">
@@ -128,6 +140,85 @@ function assignDepthChart(players) {
   return buckets
 }
 
+function buildExpectedDepthChart(players, teamAbbr) {
+  const buckets = assignDepthChart(players)
+  const expected = EXPECTED_STARTERS[teamAbbr]
+  if (!expected) return buckets
+
+  const playerByName = new Map(players.map((player) => [fullName(player).toLowerCase(), player]))
+  const forcedIds = new Set()
+
+  for (const position of POSITION_ORDER) {
+    const starterName = expected[position]
+    const player = starterName ? playerByName.get(starterName.toLowerCase()) : null
+    if (player) forcedIds.add(player.id)
+  }
+
+  for (const position of POSITION_ORDER) {
+    buckets[position] = buckets[position].filter((player) => !forcedIds.has(player.id))
+  }
+
+  for (const position of POSITION_ORDER) {
+    const starterName = expected[position]
+    const player = starterName ? playerByName.get(starterName.toLowerCase()) : null
+    if (player) buckets[position] = [player, ...buckets[position]]
+  }
+
+  return buckets
+}
+
+function serializeDepthChart(chart) {
+  return Object.fromEntries(POSITION_ORDER.map((position) => [position, chart[position].map((player) => player.id)]))
+}
+
+function hydrateDepthChart(saved, players, fallback) {
+  if (!saved || typeof saved !== 'object') return fallback
+  const byId = new Map(players.map((player) => [String(player.id), player]))
+  const seen = new Set()
+  const chart = Object.fromEntries(POSITION_ORDER.map((position) => [position, []]))
+
+  for (const position of POSITION_ORDER) {
+    const ids = Array.isArray(saved[position]) ? saved[position] : []
+    for (const id of ids) {
+      const player = byId.get(String(id))
+      if (player && !seen.has(player.id)) {
+        chart[position].push(player)
+        seen.add(player.id)
+      }
+    }
+  }
+
+  for (const position of POSITION_ORDER) {
+    for (const player of fallback[position]) {
+      if (!seen.has(player.id)) {
+        chart[position].push(player)
+        seen.add(player.id)
+      }
+    }
+  }
+
+  return chart
+}
+
+function movePlayer(chart, playerId, targetPosition, targetIndex = null) {
+  const next = Object.fromEntries(POSITION_ORDER.map((position) => [position, [...chart[position]]]))
+  let moving = null
+
+  for (const position of POSITION_ORDER) {
+    const index = next[position].findIndex((player) => player.id === playerId)
+    if (index !== -1) {
+      moving = next[position][index]
+      next[position].splice(index, 1)
+      break
+    }
+  }
+
+  if (!moving || !next[targetPosition]) return chart
+  const safeIndex = targetIndex === null ? next[targetPosition].length : Math.max(0, Math.min(targetIndex, next[targetPosition].length))
+  next[targetPosition].splice(safeIndex, 0, moving)
+  return next
+}
+
 function Initials({ player }) {
   return <span>{player.first_name?.[0]}{player.last_name?.[0]}</span>
 }
@@ -169,43 +260,80 @@ function StatTriplet({ stats, compact = false }) {
   )
 }
 
-function PlayerCard({ player, starter, stats, statsLoading, onOpen }) {
-  const fullName = `${player.first_name} ${player.last_name}`
+function PlayerCard({ player, starter, stats, statsLoading, onOpen, editMode, onDragStart, onDropBefore, onMove }) {
+  const name = fullName(player)
   return (
-    <button
-      type="button"
-      className={`player-card ${starter ? 'starter-card' : 'bench-card'}`}
-      onClick={() => onOpen(player)}
-      aria-label={`Open ${fullName} details`}
+    <article
+      className={`player-card ${starter ? 'starter-card' : 'bench-card'} ${editMode ? 'is-editing' : ''}`}
+      draggable={editMode}
+      onDragStart={(event) => editMode && onDragStart(event, player)}
+      onDragOver={(event) => editMode && event.preventDefault()}
+      onDrop={(event) => {
+        if (!editMode) return
+        event.preventDefault()
+        event.stopPropagation()
+        onDropBefore(event, player)
+      }}
     >
-      <PlayerImage player={player} starter={starter} />
-      <div className="player-card-copy">
-        <div className="player-topline">
-          <strong title={fullName}>{fullName}</strong>
-          {player.jersey_number ? <span className="jersey">#{player.jersey_number}</span> : null}
+      {editMode ? <span className="drag-grip" aria-hidden="true">⋮⋮</span> : null}
+      <button
+        type="button"
+        className="player-card-main"
+        onClick={() => onOpen(player)}
+        aria-label={`Open ${name} details`}
+      >
+        <PlayerImage player={player} starter={starter} />
+        <div className="player-card-copy">
+          <div className="player-topline">
+            <strong title={name}>{name}</strong>
+            {player.jersey_number ? <span className="jersey">#{player.jersey_number}</span> : null}
+          </div>
+          <div className="player-meta">
+            <span>{player.position || '—'}</span>
+            {player.height ? <span>{player.height}</span> : null}
+            {player.weight ? <span>{player.weight} lb</span> : null}
+          </div>
+          {statsLoading ? (
+            <div className="stats-loading-line" aria-label="Loading stats"><span /><span /><span /></div>
+          ) : (
+            <StatTriplet stats={stats} compact={!starter} />
+          )}
         </div>
-        <div className="player-meta">
-          <span>{player.position || '—'}</span>
-          {player.height ? <span>{player.height}</span> : null}
-          {player.weight ? <span>{player.weight} lb</span> : null}
-        </div>
-        {statsLoading ? (
-          <div className="stats-loading-line" aria-label="Loading stats"><span /><span /><span /></div>
-        ) : (
-          <StatTriplet stats={stats} compact={!starter} />
-        )}
-      </div>
-    </button>
+      </button>
+      {editMode ? (
+        <button type="button" className="move-player-button" onClick={() => onMove(player)} aria-label={`Move ${name}`}>
+          Move
+        </button>
+      ) : null}
+    </article>
   )
 }
 
-function PositionColumn({ label, players, statsByPlayer, statsLoading, onOpenPlayer }) {
+function PositionColumn({ label, players, statsByPlayer, statsLoading, onOpenPlayer, editMode, onDragStart, onDropAt, onMovePlayer }) {
   return (
-    <div className="position-column">
-      <div className="position-label">
+    <div
+      className={`position-column ${editMode ? 'editable-column' : ''}`}
+      onDragOver={(event) => editMode && event.preventDefault()}
+      onDrop={(event) => {
+        if (!editMode) return
+        event.preventDefault()
+        onDropAt(event, label, players.length)
+      }}
+    >
+      <div
+        className="position-label"
+        onDragOver={(event) => editMode && event.preventDefault()}
+        onDrop={(event) => {
+          if (!editMode) return
+          event.preventDefault()
+          event.stopPropagation()
+          onDropAt(event, label, 0)
+        }}
+      >
         <strong>{label}</strong>
         <span>{players.length}</span>
       </div>
+      {editMode ? <div className="starter-drop-hint">Drop here to start at {label}</div> : null}
       <div className="position-stack">
         {players.length ? players.map((player, index) => (
           <PlayerCard
@@ -215,11 +343,39 @@ function PositionColumn({ label, players, statsByPlayer, statsLoading, onOpenPla
             stats={statsByPlayer[player.id]}
             statsLoading={statsLoading}
             onOpen={onOpenPlayer}
+            editMode={editMode}
+            onDragStart={onDragStart}
+            onDropBefore={(event, targetPlayer) => onDropAt(event, label, index, targetPlayer)}
+            onMove={onMovePlayer}
           />
         )) : (
-          <div className="empty-position">No player assigned</div>
+          <div className="empty-position">{editMode ? `Drop any player at ${label}` : 'No player assigned'}</div>
         )}
       </div>
+    </div>
+  )
+}
+
+function MovePlayerPanel({ player, onMove, onClose }) {
+  if (!player) return null
+  const name = fullName(player)
+  return (
+    <div className="move-panel-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <section className="move-panel" role="dialog" aria-modal="true" aria-label={`Move ${name}`}>
+        <button type="button" className="detail-close" onClick={onClose} aria-label="Close move controls">×</button>
+        <span className="eyebrow">Depth chart</span>
+        <h3>Move {name}</h3>
+        <p>Listed position never limits placement in NBACAB.</p>
+        <div className="move-option-grid">
+          {POSITION_ORDER.map((position) => (
+            <div key={position} className="move-option-group">
+              <strong>{position}</strong>
+              <button type="button" onClick={() => onMove(position, 0)}>Start</button>
+              <button type="button" onClick={() => onMove(position, null)}>Bench</button>
+            </div>
+          ))}
+        </div>
+      </section>
     </div>
   )
 }
@@ -390,7 +546,59 @@ function TeamPage() {
     return () => controller.abort()
   }, [players])
 
-  const depthChart = useMemo(() => assignDepthChart(players), [players])
+  const expectedDepthChart = useMemo(() => buildExpectedDepthChart(players, team?.abbr), [players, team?.abbr])
+  const [depthChart, setDepthChart] = useState(() => Object.fromEntries(POSITION_ORDER.map((position) => [position, []])))
+  const [editMode, setEditMode] = useState(false)
+  const [customLineup, setCustomLineup] = useState(false)
+  const [movePlayerTarget, setMovePlayerTarget] = useState(null)
+
+  useEffect(() => {
+    if (!team || !players.length) return
+    let saved = null
+    try {
+      saved = JSON.parse(localStorage.getItem(storageKey(team.abbr)) || 'null')
+    } catch {
+      saved = null
+    }
+    if (saved) {
+      setDepthChart(hydrateDepthChart(saved, players, expectedDepthChart))
+      setCustomLineup(true)
+    } else {
+      setDepthChart(expectedDepthChart)
+      setCustomLineup(false)
+    }
+  }, [team?.abbr, players, expectedDepthChart])
+
+  function persistChart(next) {
+    setDepthChart(next)
+    setCustomLineup(true)
+    if (team) localStorage.setItem(storageKey(team.abbr), JSON.stringify(serializeDepthChart(next)))
+  }
+
+  function handleDragStart(event, player) {
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', String(player.id))
+  }
+
+  function handleDropAt(event, position, index) {
+    const playerId = Number(event.dataTransfer.getData('text/plain'))
+    if (!playerId) return
+    persistChart(movePlayer(depthChart, playerId, position, index))
+  }
+
+  function resetExpectedLineup() {
+    if (!team) return
+    localStorage.removeItem(storageKey(team.abbr))
+    setDepthChart(expectedDepthChart)
+    setCustomLineup(false)
+  }
+
+  function moveFromPanel(position, index) {
+    if (!movePlayerTarget) return
+    persistChart(movePlayer(depthChart, movePlayerTarget.id, position, index))
+    setMovePlayerTarget(null)
+  }
+
   if (!team) return <Navigate to="/" replace />
 
   return (
@@ -416,11 +624,23 @@ function TeamPage() {
       <section className="depth-chart-section">
         <div className="section-heading">
           <div>
-            <span className="eyebrow">Live roster</span>
+            <span className="eyebrow">{customLineup ? 'Your lineup' : 'Expected lineup'}</span>
             <h2>Depth chart</h2>
           </div>
-          <span className="team-count">Tap any player</span>
+          <div className="depth-chart-actions">
+            {customLineup ? <button type="button" className="secondary-action" onClick={resetExpectedLineup}>Reset expected</button> : null}
+            <button type="button" className={`edit-lineup-button ${editMode ? 'active' : ''}`} onClick={() => setEditMode((value) => !value)}>
+              {editMode ? 'Done editing' : 'Edit lineup'}
+            </button>
+          </div>
         </div>
+        <p className="lineup-context">
+          {customLineup
+            ? 'This is your saved arrangement on this device. Move any player to any position.'
+            : team.abbr === 'POR'
+              ? 'Expected starters: Ja Morant · Damian Lillard · Deni Avdija · Toumani Camara · Donovan Clingan.'
+              : 'NBACAB is using a provisional expected lineup until our expected-starter data feed is added.'}
+        </p>
 
         {loading ? <LoadingRoster /> : null}
         {error ? (
@@ -447,11 +667,15 @@ function TeamPage() {
                   statsByPlayer={statsByPlayer}
                   statsLoading={statsLoading}
                   onOpenPlayer={setSelectedPlayer}
+                  editMode={editMode}
+                  onDragStart={handleDragStart}
+                  onDropAt={handleDropAt}
+                  onMovePlayer={setMovePlayerTarget}
                 />
               ))}
             </div>
             <p className="roster-footnote">
-              Stats are calculated from BALLDONTLIE regular-season game box scores because season-average endpoints require GOAT. Position placement is still provisional until the editable depth-chart layer is added.
+              Drag-and-drop placement is unrestricted: a guard can play SF, a center can play PG, or anything else you want. Changes save automatically on this device. Player detail cards still show BALLDONTLIE's listed position for reference only.
             </p>
           </>
         ) : null}
@@ -462,6 +686,11 @@ function TeamPage() {
         stats={selectedPlayer ? statsByPlayer[selectedPlayer.id] : null}
         seasonLabel={seasonLabel}
         onClose={() => setSelectedPlayer(null)}
+      />
+      <MovePlayerPanel
+        player={movePlayerTarget}
+        onMove={moveFromPanel}
+        onClose={() => setMovePlayerTarget(null)}
       />
     </AppShell>
   )
