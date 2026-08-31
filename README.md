@@ -82,3 +82,12 @@ The emergency override list is not intended to become a manually curated roster 
 - Adds lineup source, season and confidence/source-agreement messaging.
 - Saved user lineups remain untouched and continue to override projected lineup ordering on that device.
 - Reset Expected now returns to the latest projected depth chart instead of the old provisional algorithm whenever the feed is available.
+
+## V17.1 projected-lineup reliability fix
+
+- Reworked the RealGM league-wide parser so team headings and five-position tables are paired by document order instead of fragile direct-sibling assumptions.
+- Replaced the ESPN rendered-page parser with ESPN Core's structured team depth-chart JSON endpoint as an independent fallback.
+- RealGM remains the preferred projected rotation source; ESPN can now independently supply PG/SG/SF/PF/C starters if RealGM fails.
+- RotoWire remains a third, opportunistic fallback.
+- API responses now expose per-source fetch/parse diagnostics (`fetchOk`, `ok`, `error`) and the UI shows RealGM/ESPN source health beside confidence.
+- Reduced failed-feed cache time so a temporary upstream failure recovers faster.
