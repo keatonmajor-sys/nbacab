@@ -19,3 +19,8 @@
 - Lineups are always editable; no Edit/Done mode required.
 - Reset expected is always available.
 - Mobile cards show six compact stats at once: PTS, REB, AST, BLK, STL, 3PM.
+
+
+## V10
+- Mobile stats are now a readable 1-column x 6-row stack: PTS, REB, AST, BLK, STL, 3PM.
+- Removed the tiny 3x2 stat-box presentation while preserving the five-position mobile depth chart.

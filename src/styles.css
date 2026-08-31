@@ -396,3 +396,48 @@ button { font: inherit; }
   .card-drop-label { inset:4px; border-radius:7px; font-size:.38rem; }
   .player-card.card-drop-over { transform:none; }
 }
+
+/* V10: readable mobile stat stack — one stat per row */
+@media (max-width:700px) {
+  .mobile-quick-stats {
+    display:flex;
+    flex-direction:column;
+    gap:1px;
+    margin-top:5px;
+  }
+  .mobile-quick-stats span {
+    display:flex;
+    align-items:baseline;
+    justify-content:flex-start;
+    gap:3px;
+    min-width:0;
+    padding:0;
+    border:0;
+    border-radius:0;
+    background:transparent;
+    text-align:left;
+  }
+  .mobile-quick-stats strong {
+    display:inline;
+    overflow:visible;
+    font-size:.66rem;
+    line-height:1.12;
+    white-space:nowrap;
+    text-overflow:clip;
+  }
+  .mobile-quick-stats small {
+    display:inline;
+    margin:0;
+    color:#7c8493;
+    font-size:.34rem;
+    line-height:1;
+    font-weight:900;
+    letter-spacing:.06em;
+  }
+}
+
+@media (max-width:420px) {
+  .mobile-quick-stats { gap:1px; }
+  .mobile-quick-stats strong { font-size:.61rem; }
+  .mobile-quick-stats small { font-size:.31rem; }
+}
