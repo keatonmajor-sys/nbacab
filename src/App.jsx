@@ -580,6 +580,7 @@ function TeamPage() {
   const team = teams.find((item) => item.abbr.toLowerCase() === teamAbbr?.toLowerCase())
   const [players, setPlayers] = useState([])
   const [imageMatches, setImageMatches] = useState(0)
+  const [rosterVerification, setRosterVerification] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [statsByPlayer, setStatsByPlayer] = useState({})
@@ -615,6 +616,7 @@ function TeamPage() {
         if (!response.ok) throw new Error(payload?.error || 'Unable to load roster.')
         setPlayers(Array.isArray(payload?.data) ? payload.data : [])
         setImageMatches(Number(payload?.imageMatches || 0))
+        setRosterVerification(payload?.rosterVerification || null)
       } catch (err) {
         if (err.name !== 'AbortError') setError(err.message || 'Unable to load roster.')
       } finally {
@@ -824,11 +826,21 @@ function TeamPage() {
       </section>
 
       <section className="status-strip">
-        <div><span>Roster</span><strong>{loading ? 'Loading…' : `${players.length} active`}</strong></div>
+        <div><span>Roster</span><strong>{loading ? 'Loading…' : `${players.length} active${rosterVerification?.status === 'reconciled' ? ' · verified' : ''}`}</strong></div>
         <div><span>Photos</span><strong>{loading ? 'Matching…' : `${imageMatches}/${players.length} matched`}</strong></div>
         <div><span>Stats</span><strong>{statsLoading ? 'Calculating…' : statsError ? 'Unavailable' : seasonLabel ? `${seasonLabel} latest` : 'Waiting…'}</strong></div>
         <div><span>Contracts</span><strong>{contractsLoading ? 'Loading…' : contractsError ? 'Unavailable' : `${matchedContractCount}/${players.length} matched · ${fallbackCount ? `${fallbackCount} fallback · ` : ''}${contractSeason}-${String(contractSeason + 1).slice(-2)}`}</strong></div>
       </section>
+
+      {rosterVerification ? (
+        <div className={`roster-verification ${rosterVerification.status === 'reconciled' ? 'verified' : 'limited'}`} role="status">
+          <div>
+            <strong>{rosterVerification.status === 'reconciled' ? 'Roster reconciled' : 'Roster primary feed'}</strong>
+            <span>BDL + ESPN{rosterVerification.sources?.nbaOffseasonTracker ? ' + NBA transactions' : ''}{rosterVerification.sources?.verifiedOverrides ? ' + verified overrides' : ''}</span>
+          </div>
+          <small>{rosterVerification.additionsApplied?.length || rosterVerification.departuresApplied?.length ? `${(rosterVerification.additionsApplied?.length || 0) + (rosterVerification.departuresApplied?.length || 0)} stale roster ${((rosterVerification.additionsApplied?.length || 0) + (rosterVerification.departuresApplied?.length || 0)) === 1 ? 'item' : 'items'} corrected` : 'No confirmed transaction corrections needed'}</small>
+        </div>
+      ) : null}
 
       <section className="cap-overview">
         <div className="cap-overview-heading">

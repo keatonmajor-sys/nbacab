@@ -533,3 +533,26 @@ button { font: inherit; }
 @media(max-width:720px){.cap-overview{padding:16px;margin:20px 0 30px;border-radius:18px}.cap-overview-heading{align-items:flex-start;flex-direction:column;gap:12px}.cap-known{text-align:left}.cap-known strong{font-size:24px}.cap-threshold-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.cap-threshold-grid>div{padding:12px;border-bottom:1px solid #292e39}.cap-threshold-grid>div:nth-child(2){border-right:0}.cap-threshold-grid>div:nth-child(3),.cap-threshold-grid>div:nth-child(4){border-bottom:0}.cap-threshold-grid strong{font-size:17px}}
 
 .contract-source-line{margin-top:12px;color:var(--muted,#8b93a5);font-size:11px;letter-spacing:.04em;text-transform:uppercase}
+
+/* V16 roster reconciliation status */
+.roster-verification {
+  margin: -2px 0 18px;
+  padding: 10px 14px;
+  border: 1px solid #2b303a;
+  border-radius: 14px;
+  background: #11141b;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  color: #8e95a4;
+}
+.roster-verification > div { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.roster-verification strong { color: #f4f5f7; font-size: .78rem; }
+.roster-verification span, .roster-verification small { font-size: .7rem; }
+.roster-verification.verified { border-color: rgba(255,157,86,.28); }
+.roster-verification.verified strong { color: #ffad75; }
+@media (max-width: 720px) {
+  .roster-verification { align-items: flex-start; flex-direction: column; gap: 4px; padding: 9px 10px; margin-bottom: 14px; }
+  .roster-verification > div { align-items: flex-start; flex-direction: column; gap: 2px; }
+}

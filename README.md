@@ -58,3 +58,17 @@ Mobile card sizing refinement:
 - The cap overview prefers Spotrac's team-level Total Cap / allocation number when the page is reachable; otherwise it uses the sum of exact matched cap hits.
 - NBA 2026-27 thresholds remain the official values: cap $164.961M, tax $200.428M, first apron $209.015M, second apron $221.686M.
 - RealGM remains a useful manual cross-check for transactions and league threshold history, but V15 does not depend on scraping it at runtime.
+
+## V16 — roster reconciliation / freshness
+
+NBACAB no longer assumes a single roster API is always current during the offseason.
+
+- BALLDONTLIE remains the primary structured active-player feed.
+- ESPN is used as a second roster signal and photo source.
+- NBA.com's 2026 offseason team-by-team transaction tracker is fetched server-side and used to reconcile confirmed additions/departures when the structured feed lags.
+- A tiny source-backed emergency override list protects against very recent confirmed moves while external feeds/pages catch up. The first test case is Jonathan Kuminga: Atlanta -> Minnesota on Aug. 26, 2026.
+- The roster endpoint now returns provenance/debug metadata: source availability, applied additions/removals, unresolved additions, ESPN-only/BDL-only conflicts, and exact override reasons.
+- Roster cache was shortened to 5 minutes (15-minute stale window) so offseason moves propagate substantially faster.
+- Contracts, stats and cap calculations automatically operate on the reconciled roster returned to the frontend, so stale players no longer contaminate downstream team data.
+
+The emergency override list is not intended to become a manually curated roster database. It is a safety valve. Confirmed transaction parsing and primary/secondary roster feeds remain the normal path.
