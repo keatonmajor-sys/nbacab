@@ -438,3 +438,182 @@ button {
     border-radius: 22px;
   }
 }
+
+/* V2 — live BALLDONTLIE rosters */
+.position-stack {
+  display: grid;
+  gap: 10px;
+}
+
+.position-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.position-label span {
+  display: grid;
+  place-items: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 7px;
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 999px;
+  color: #8e94a3;
+  font-size: .72rem;
+}
+
+.player-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 11px;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 16px;
+  background: rgba(18,21,29,.76);
+}
+
+.starter-card {
+  border-color: rgba(255,157,86,.34);
+  background: linear-gradient(145deg, rgba(255,157,86,.09), rgba(18,21,29,.9));
+}
+
+.player-avatar {
+  display: grid;
+  place-items: center;
+  flex: 0 0 46px;
+  width: 46px;
+  height: 52px;
+  border-radius: 13px;
+  background: linear-gradient(145deg, #222735, #141820);
+  color: #dfe3eb;
+  font-size: .82rem;
+  font-weight: 900;
+}
+
+.player-card-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.player-topline {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 7px;
+}
+
+.player-topline strong {
+  min-width: 0;
+  overflow: hidden;
+  font-size: .88rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.jersey {
+  color: #ff9d56;
+  font-size: .7rem;
+  font-weight: 800;
+}
+
+.player-meta,
+.player-detail-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 5px;
+  color: #9299a8;
+  font-size: .68rem;
+}
+
+.player-meta span + span::before {
+  content: '•';
+  margin-right: 7px;
+  color: #4f5665;
+}
+
+.player-detail-row {
+  color: #6f7685;
+}
+
+.player-detail-row span:first-child {
+  color: #b2b8c4;
+}
+
+.empty-position {
+  padding: 22px 10px;
+  border: 1px dashed rgba(255,255,255,.09);
+  border-radius: 16px;
+  color: #6f7685;
+  font-size: .76rem;
+  text-align: center;
+}
+
+.roster-state,
+.error-state {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  margin-bottom: 16px;
+  padding: 16px;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 18px;
+  background: rgba(18,21,29,.7);
+}
+
+.roster-state strong,
+.roster-state span,
+.error-state strong,
+.error-state span {
+  display: block;
+}
+
+.roster-state span,
+.error-state span {
+  margin-top: 3px;
+  color: #9096a4;
+  font-size: .8rem;
+}
+
+.loading-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff9d56;
+  animation: nbacab-pulse 1s ease-in-out infinite alternate;
+}
+
+.error-state {
+  border-color: rgba(255,112,112,.24);
+}
+
+.error-state strong {
+  color: #ffb0b0;
+}
+
+.roster-footnote {
+  margin: 14px 0 0;
+  color: #747b89;
+  font-size: .76rem;
+  line-height: 1.55;
+}
+
+@keyframes nbacab-pulse {
+  from { opacity: .35; transform: scale(.8); }
+  to { opacity: 1; transform: scale(1.1); }
+}
+
+@media (max-width: 900px) {
+  .depth-chart-grid.live-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .depth-chart-grid.live-grid {
+    grid-template-columns: 1fr;
+  }
+}
