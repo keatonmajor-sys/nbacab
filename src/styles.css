@@ -332,3 +332,64 @@ button { font: inherit; }
   .mobile-one-stat strong { font-size:.62rem; }
   .mobile-one-stat span { font-size:.34rem; }
 }
+
+
+/* V8: card-sized drop targets + intuitive starter swaps */
+.depth-drop-slot { display:none !important; }
+.depth-entry { position:relative; }
+.player-card.is-editing { transition:border-color .12s ease, background .12s ease, transform .12s ease; }
+.drag-active .player-card.is-editing { border-color:rgba(255,157,86,.28); }
+.player-card.card-drop-over {
+  border-color:#ff9d56 !important;
+  background:linear-gradient(180deg,rgba(255,157,86,.14),rgba(255,157,86,.055)) !important;
+  transform:translateY(-2px);
+}
+.card-drop-label {
+  position:absolute;
+  z-index:7;
+  inset:8px;
+  display:none;
+  align-items:center;
+  justify-content:center;
+  border:1px dashed rgba(255,157,86,.72);
+  border-radius:12px;
+  background:rgba(10,12,17,.84);
+  color:#ffd0ab;
+  font-size:.62rem;
+  font-weight:900;
+  letter-spacing:.04em;
+  text-align:center;
+  pointer-events:none;
+}
+.drag-active .player-card.card-drop-over .card-drop-label { display:flex; }
+.depth-end-drop {
+  min-height:74px;
+  display:none;
+  align-items:center;
+  justify-content:center;
+  margin-top:8px;
+  border:1px dashed rgba(255,157,86,.3);
+  border-radius:14px;
+  background:rgba(255,157,86,.025);
+  color:#a98366;
+  font-size:.58rem;
+  font-weight:850;
+  text-align:center;
+  transition:border-color .12s ease,background .12s ease,min-height .12s ease;
+}
+.drag-active .depth-end-drop { display:flex; }
+.depth-end-drop.is-over {
+  min-height:104px;
+  border-color:#ff9d56;
+  background:rgba(255,157,86,.12);
+  color:#ffd0ab;
+}
+.empty-column-drop { display:flex; min-height:180px; }
+
+@media (max-width:720px) {
+  .depth-end-drop { min-height:54px; border-radius:9px; font-size:.42rem; }
+  .depth-end-drop.is-over { min-height:72px; }
+  .empty-column-drop { min-height:92px; }
+  .card-drop-label { inset:4px; border-radius:7px; font-size:.38rem; }
+  .player-card.card-drop-over { transform:none; }
+}

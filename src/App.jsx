@@ -204,29 +204,43 @@ function hydrateDepthChart(saved, players, fallback) {
   return chart
 }
 
+function locatePlayer(chart, playerId) {
+  for (const position of POSITION_ORDER) {
+    const index = chart[position].findIndex((player) => player.id === playerId)
+    if (index !== -1) return { position, index, player: chart[position][index] }
+  }
+  return null
+}
+
 function movePlayer(chart, playerId, targetPosition, targetIndex = null) {
   const next = Object.fromEntries(POSITION_ORDER.map((position) => [position, [...chart[position]]]))
-  let moving = null
-  let sourcePosition = null
-  let sourceIndex = -1
+  const source = locatePlayer(next, playerId)
+  if (!source || !next[targetPosition]) return chart
 
-  for (const position of POSITION_ORDER) {
-    const index = next[position].findIndex((player) => player.id === playerId)
-    if (index !== -1) {
-      moving = next[position][index]
-      sourcePosition = position
-      sourceIndex = index
-      next[position].splice(index, 1)
-      break
-    }
+  next[source.position].splice(source.index, 1)
+  let requestedIndex = targetIndex
+  if (requestedIndex !== null && source.position === targetPosition && source.index < requestedIndex) requestedIndex -= 1
+  const safeIndex = requestedIndex === null ? next[targetPosition].length : Math.max(0, Math.min(requestedIndex, next[targetPosition].length))
+  next[targetPosition].splice(safeIndex, 0, source.player)
+  return next
+}
+
+function dropPlayerOnCard(chart, playerId, targetPosition, targetIndex) {
+  const source = locatePlayer(chart, playerId)
+  if (!source || !chart[targetPosition]?.[targetIndex]) return movePlayer(chart, playerId, targetPosition, targetIndex)
+
+  // Starter-on-starter is a true swap: each starter takes the other's position.
+  if (source.index === 0 && targetIndex === 0 && source.position !== targetPosition) {
+    const next = Object.fromEntries(POSITION_ORDER.map((position) => [position, [...chart[position]]]))
+    const targetPlayer = next[targetPosition][0]
+    next[targetPosition][0] = source.player
+    next[source.position][0] = targetPlayer
+    return next
   }
 
-  if (!moving || !next[targetPosition]) return chart
-  let requestedIndex = targetIndex
-  if (requestedIndex !== null && sourcePosition === targetPosition && sourceIndex < requestedIndex) requestedIndex -= 1
-  const safeIndex = requestedIndex === null ? next[targetPosition].length : Math.max(0, Math.min(requestedIndex, next[targetPosition].length))
-  next[targetPosition].splice(safeIndex, 0, moving)
-  return next
+  // Every other card behaves like a depth slot: the dragged player takes this
+  // exact spot and everyone at/under it moves down one. The source column compacts.
+  return movePlayer(chart, playerId, targetPosition, targetIndex)
 }
 
 function Initials({ player }) {
@@ -281,11 +295,11 @@ function mobileStatValue(stats, statKey) {
   return ['fgPct', 'fg3Pct', 'ftPct'].includes(statKey) ? `${value}%` : value
 }
 
-function DropSlot({ position, index, editMode, onDropAt, visible = false }) {
+function EndDropZone({ position, index, editMode, onDropAt, empty = false }) {
   if (!editMode) return null
   return (
     <div
-      className={`depth-drop-slot ${visible ? 'starter-slot' : ''}`}
+      className={`depth-end-drop ${empty ? 'empty-column-drop' : ''}`}
       onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'move' }}
       onDragEnter={(event) => event.currentTarget.classList.add('is-over')}
       onDragLeave={(event) => event.currentTarget.classList.remove('is-over')}
@@ -296,16 +310,28 @@ function DropSlot({ position, index, editMode, onDropAt, visible = false }) {
         onDropAt(event, position, index)
       }}
     >
-      <span>{index === 0 ? `Start ${position}` : `Drop at ${position} #${index + 1}`}</span>
+      <span>{empty ? `Drop at ${position}` : `Add to ${position} depth`}</span>
     </div>
   )
 }
 
-function PlayerCard({ player, starter, stats, statsLoading, onOpen, editMode, onDragStart, onDragEnd, onMove, mobileStatKey }) {
+function PlayerCard({ player, starter, stats, statsLoading, onOpen, editMode, onDragStart, onDragEnd, onMove, onDropOnCard, position, depthIndex, mobileStatKey }) {
   const name = fullName(player)
   const mobileLabel = MOBILE_STAT_OPTIONS.find(([, key]) => key === mobileStatKey)?.[0] || 'PTS'
   return (
-    <article className={`player-card ${starter ? 'starter-card' : 'bench-card'} ${editMode ? 'is-editing' : ''}`}>
+    <article
+      className={`player-card ${starter ? 'starter-card' : 'bench-card'} ${editMode ? 'is-editing' : ''}`}
+      onDragOver={editMode ? (event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; event.currentTarget.classList.add('card-drop-over') } : undefined}
+      onDragLeave={editMode ? (event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.classList.remove('card-drop-over')
+      } : undefined}
+      onDrop={editMode ? (event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        event.currentTarget.classList.remove('card-drop-over')
+        onDropOnCard(event, position, depthIndex)
+      } : undefined}
+    >
       <div
         className={`player-photo-drag-zone ${editMode ? 'can-drag' : ''}`}
         draggable={editMode}
@@ -336,16 +362,16 @@ function PlayerCard({ player, starter, stats, statsLoading, onOpen, editMode, on
         </div>
       </button>
       {editMode ? <button type="button" className="move-player-button" onClick={() => onMove(player)} aria-label={`Move ${name}`}>Move</button> : null}
+      {editMode ? <div className="card-drop-label">{starter ? 'Drop starter here' : `Take ${position}${depthIndex + 1} spot`}</div> : null}
     </article>
   )
 }
 
-function PositionColumn({ label, players, statsByPlayer, statsLoading, onOpenPlayer, editMode, onDragStart, onDragEnd, onDropAt, onMovePlayer, mobileStatKey }) {
+function PositionColumn({ label, players, statsByPlayer, statsLoading, onOpenPlayer, editMode, onDragStart, onDragEnd, onDropAt, onDropOnCard, onMovePlayer, mobileStatKey }) {
   return (
     <div className={`position-column ${editMode ? 'editable-column' : ''}`}>
       <div className="position-label"><strong>{label}</strong><span>{players.length}</span></div>
       <div className="position-stack">
-        <DropSlot position={label} index={0} editMode={editMode} onDropAt={onDropAt} visible />
         {players.map((player, index) => (
           <div className="depth-entry" key={player.id}>
             <PlayerCard
@@ -358,12 +384,15 @@ function PositionColumn({ label, players, statsByPlayer, statsLoading, onOpenPla
               onDragStart={onDragStart}
               onDragEnd={onDragEnd}
               onMove={onMovePlayer}
+              onDropOnCard={onDropOnCard}
+              position={label}
+              depthIndex={index}
               mobileStatKey={mobileStatKey}
             />
-            <DropSlot position={label} index={index + 1} editMode={editMode} onDropAt={onDropAt} />
           </div>
         ))}
-        {!players.length ? <div className="empty-position">{editMode ? `Drop any player at ${label}` : 'No player assigned'}</div> : null}
+        <EndDropZone position={label} index={players.length} editMode={editMode} onDropAt={onDropAt} empty={!players.length} />
+        {!players.length && !editMode ? <div className="empty-position">No player assigned</div> : null}
       </div>
     </div>
   )
@@ -622,6 +651,12 @@ function TeamPage() {
     persistChart(movePlayer(depthChart, playerId, position, index))
   }
 
+  function handleDropOnCard(event, position, index) {
+    const playerId = Number(event.dataTransfer.getData('text/plain'))
+    if (!playerId) return
+    persistChart(dropPlayerOnCard(depthChart, playerId, position, index))
+  }
+
   function resetExpectedLineup() {
     if (!team) return
     localStorage.removeItem(storageKey(team.abbr))
@@ -713,6 +748,7 @@ function TeamPage() {
                   onDragStart={handleDragStart}
                   onDragEnd={handleDragEnd}
                   onDropAt={handleDropAt}
+                  onDropOnCard={handleDropOnCard}
                   onMovePlayer={setMovePlayerTarget}
                   mobileStatKey={mobileStatKey}
                 />
