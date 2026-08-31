@@ -233,3 +233,47 @@ button { font: inherit; }
   .move-option-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .move-option-group:last-child { grid-column:1 / -1; }
 }
+
+/* V6: richer cards + intentional drag experience */
+.player-card { display:block; }
+.player-photo-drag-zone { position:relative; flex:0 0 82px; min-width:0; }
+.bench-card { display:grid; grid-template-columns:82px minmax(0,1fr); align-items:stretch; }
+.starter-card .player-photo-drag-zone { width:100%; }
+.player-photo-drag-zone.can-drag { cursor:grab; user-select:none; }
+.player-photo-drag-zone.can-drag:active { cursor:grabbing; }
+.player-info-button { display:block; width:100%; min-width:0; padding:0; border:0; background:transparent; color:inherit; font:inherit; text-align:left; cursor:pointer; }
+.bench-card .player-info-button { min-width:0; }
+.player-info-button:focus-visible { outline:2px solid #ff9d56; outline-offset:-2px; border-radius:14px; }
+.drag-photo-label { position:absolute; left:8px; bottom:8px; z-index:4; padding:4px 7px; border:1px solid rgba(255,157,86,.3); border-radius:999px; background:rgba(8,10,15,.82); color:#ffc18e; font-size:.48rem; font-weight:900; letter-spacing:.1em; pointer-events:none; opacity:.78; }
+.bench-card .drag-photo-label { left:5px; bottom:5px; padding:3px 5px; font-size:.42rem; }
+.drag-active .starter-drop-hint { border-color:rgba(255,157,86,.55); background:rgba(255,157,86,.07); color:#ffc18e; }
+
+.card-stats { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:4px; margin-top:10px; }
+.card-stats span { min-width:0; padding:6px 2px; border:1px solid rgba(255,255,255,.06); border-radius:8px; background:rgba(255,255,255,.035); text-align:center; }
+.card-stats strong,.card-stats small { display:block; white-space:nowrap; }
+.card-stats strong { overflow:hidden; font-size:.68rem; line-height:1; text-overflow:ellipsis; }
+.card-stats small { margin-top:3px; color:#737b8b; font-size:.42rem; font-weight:850; letter-spacing:.04em; }
+.card-stats.compact { grid-template-columns:repeat(5,minmax(0,1fr)); gap:3px; margin-top:7px; }
+.card-stats.compact span { padding:4px 1px; border-radius:6px; }
+.card-stats.compact strong { font-size:.58rem; }
+.card-stats.compact small { font-size:.36rem; }
+.card-stats.unavailable { display:block; }
+.card-stats.unavailable span { display:block; padding:6px; color:#6f7685; font-size:.58rem; text-align:left; }
+
+/* Browser drag image: a mini NBACAB player card instead of the default file-thumbnail ghost. */
+.nbacab-drag-ghost { position:fixed; left:-1000px; top:-1000px; z-index:9999; display:flex; align-items:center; width:220px; height:88px; overflow:hidden; border:2px solid #ff9d56; border-radius:18px; background:#151922; box-shadow:0 18px 50px rgba(0,0,0,.55); }
+.nbacab-drag-ghost img { width:82px; height:88px; object-fit:contain; object-position:center bottom; background:radial-gradient(circle at 50% 65%,rgba(255,255,255,.1),transparent 65%); }
+.nbacab-drag-ghost div { min-width:0; padding:10px; }
+.nbacab-drag-ghost strong,.nbacab-drag-ghost span { display:block; }
+.nbacab-drag-ghost strong { overflow:hidden; color:#fff; font-size:.9rem; text-overflow:ellipsis; white-space:nowrap; }
+.nbacab-drag-ghost span { margin-top:5px; color:#ffb77e; font-size:.62rem; font-weight:800; text-transform:uppercase; letter-spacing:.08em; }
+
+.player-card.is-editing { cursor:default; }
+.player-card.is-editing:active { cursor:default; }
+.player-card.is-editing .player-info-button { padding-bottom:34px; }
+.starter-card.is-editing .player-card-copy { padding-bottom:12px; }
+.move-player-button { bottom:6px; }
+
+@media (max-width:520px) {
+  .card-stats { grid-template-columns:repeat(5,minmax(0,1fr)); }
+}

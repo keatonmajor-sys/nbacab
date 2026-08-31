@@ -203,18 +203,24 @@ function hydrateDepthChart(saved, players, fallback) {
 function movePlayer(chart, playerId, targetPosition, targetIndex = null) {
   const next = Object.fromEntries(POSITION_ORDER.map((position) => [position, [...chart[position]]]))
   let moving = null
+  let sourcePosition = null
+  let sourceIndex = -1
 
   for (const position of POSITION_ORDER) {
     const index = next[position].findIndex((player) => player.id === playerId)
     if (index !== -1) {
       moving = next[position][index]
+      sourcePosition = position
+      sourceIndex = index
       next[position].splice(index, 1)
       break
     }
   }
 
   if (!moving || !next[targetPosition]) return chart
-  const safeIndex = targetIndex === null ? next[targetPosition].length : Math.max(0, Math.min(targetIndex, next[targetPosition].length))
+  let requestedIndex = targetIndex
+  if (requestedIndex !== null && sourcePosition === targetPosition && sourceIndex < requestedIndex) requestedIndex -= 1
+  const safeIndex = requestedIndex === null ? next[targetPosition].length : Math.max(0, Math.min(requestedIndex, next[targetPosition].length))
   next[targetPosition].splice(safeIndex, 0, moving)
   return next
 }
@@ -246,27 +252,29 @@ function PlayerImage({ player, starter = false, detail = false }) {
   )
 }
 
-function StatTriplet({ stats, compact = false }) {
+function CardStats({ stats, compact = false }) {
   if (!stats || !stats.gamesPlayed) {
-    return <div className={`stat-triplet ${compact ? 'compact' : ''} unavailable`}><span>Stats unavailable</span></div>
+    return <div className={`card-stats ${compact ? 'compact' : ''} unavailable`}><span>Stats unavailable</span></div>
   }
 
+  const items = [
+    ['PTS', stats.pts], ['REB', stats.reb], ['AST', stats.ast],
+    ['FG%', `${stats.fgPct}%`], ['3P%', `${stats.fg3Pct}%`], ['FT%', `${stats.ftPct}%`],
+    ['3PM', stats.fg3m ?? '—'], ['STL', stats.stl], ['BLK', stats.blk], ['TOV', stats.turnover],
+  ]
+
   return (
-    <div className={`stat-triplet ${compact ? 'compact' : ''}`} aria-label="Season averages">
-      <span><strong>{stats.pts}</strong><small>PTS</small></span>
-      <span><strong>{stats.reb}</strong><small>REB</small></span>
-      <span><strong>{stats.ast}</strong><small>AST</small></span>
+    <div className={`card-stats ${compact ? 'compact' : ''}`} aria-label="Season averages">
+      {items.map(([label, value]) => <span key={label}><strong>{value}</strong><small>{label}</small></span>)}
     </div>
   )
 }
 
-function PlayerCard({ player, starter, stats, statsLoading, onOpen, editMode, onDragStart, onDropBefore, onMove }) {
+function PlayerCard({ player, starter, stats, statsLoading, onOpen, editMode, onDragStart, onDragEnd, onDropBefore, onMove }) {
   const name = fullName(player)
   return (
     <article
       className={`player-card ${starter ? 'starter-card' : 'bench-card'} ${editMode ? 'is-editing' : ''}`}
-      draggable={editMode}
-      onDragStart={(event) => editMode && onDragStart(event, player)}
       onDragOver={(event) => editMode && event.preventDefault()}
       onDrop={(event) => {
         if (!editMode) return
@@ -275,14 +283,22 @@ function PlayerCard({ player, starter, stats, statsLoading, onOpen, editMode, on
         onDropBefore(event, player)
       }}
     >
-      {editMode ? <span className="drag-grip" aria-hidden="true">⋮⋮</span> : null}
+      <div
+        className={`player-photo-drag-zone ${editMode ? 'can-drag' : ''}`}
+        draggable={editMode}
+        onDragStart={(event) => editMode && onDragStart(event, player)}
+        onDragEnd={onDragEnd}
+        title={editMode ? `Drag ${name}` : undefined}
+      >
+        <PlayerImage player={player} starter={starter} />
+        {editMode ? <span className="drag-photo-label">DRAG</span> : null}
+      </div>
       <button
         type="button"
-        className="player-card-main"
+        className="player-info-button"
         onClick={() => onOpen(player)}
         aria-label={`Open ${name} details`}
       >
-        <PlayerImage player={player} starter={starter} />
         <div className="player-card-copy">
           <div className="player-topline">
             <strong title={name}>{name}</strong>
@@ -296,7 +312,7 @@ function PlayerCard({ player, starter, stats, statsLoading, onOpen, editMode, on
           {statsLoading ? (
             <div className="stats-loading-line" aria-label="Loading stats"><span /><span /><span /></div>
           ) : (
-            <StatTriplet stats={stats} compact={!starter} />
+            <CardStats stats={stats} compact={!starter} />
           )}
         </div>
       </button>
@@ -309,7 +325,7 @@ function PlayerCard({ player, starter, stats, statsLoading, onOpen, editMode, on
   )
 }
 
-function PositionColumn({ label, players, statsByPlayer, statsLoading, onOpenPlayer, editMode, onDragStart, onDropAt, onMovePlayer }) {
+function PositionColumn({ label, players, statsByPlayer, statsLoading, onOpenPlayer, editMode, onDragStart, onDragEnd, onDropAt, onMovePlayer }) {
   return (
     <div
       className={`position-column ${editMode ? 'editable-column' : ''}`}
@@ -345,6 +361,7 @@ function PositionColumn({ label, players, statsByPlayer, statsLoading, onOpenPla
             onOpen={onOpenPlayer}
             editMode={editMode}
             onDragStart={onDragStart}
+            onDragEnd={onDragEnd}
             onDropBefore={(event, targetPlayer) => onDropAt(event, label, index, targetPlayer)}
             onMove={onMovePlayer}
           />
@@ -449,6 +466,7 @@ function PlayerDetail({ player, stats, seasonLabel, onClose }) {
             <div className="detail-shooting-stats">
               <Metric label="FG%" value={`${stats.fgPct}%`} />
               <Metric label="3P%" value={`${stats.fg3Pct}%`} />
+              <Metric label="3PM" value={stats.fg3m ?? '—'} />
               <Metric label="FT%" value={`${stats.ftPct}%`} />
               <Metric label="TOV" value={stats.turnover} />
               <Metric label="+/-" value={stats.plusMinus > 0 ? `+${stats.plusMinus}` : stats.plusMinus} />
@@ -551,6 +569,7 @@ function TeamPage() {
   const [editMode, setEditMode] = useState(false)
   const [customLineup, setCustomLineup] = useState(false)
   const [movePlayerTarget, setMovePlayerTarget] = useState(null)
+  const [draggingPlayerId, setDraggingPlayerId] = useState(null)
 
   useEffect(() => {
     if (!team || !players.length) return
@@ -578,6 +597,26 @@ function TeamPage() {
   function handleDragStart(event, player) {
     event.dataTransfer.effectAllowed = 'move'
     event.dataTransfer.setData('text/plain', String(player.id))
+    setDraggingPlayerId(player.id)
+
+    const ghost = document.createElement('div')
+    ghost.className = 'nbacab-drag-ghost'
+    if (player.image_url) {
+      const img = document.createElement('img')
+      img.src = player.image_url
+      img.alt = ''
+      ghost.appendChild(img)
+    }
+    const copy = document.createElement('div')
+    copy.innerHTML = `<strong>${fullName(player)}</strong><span>Move anywhere</span>`
+    ghost.appendChild(copy)
+    document.body.appendChild(ghost)
+    event.dataTransfer.setDragImage(ghost, 72, 72)
+    requestAnimationFrame(() => ghost.remove())
+  }
+
+  function handleDragEnd() {
+    setDraggingPlayerId(null)
   }
 
   function handleDropAt(event, position, index) {
@@ -658,7 +697,7 @@ function TeamPage() {
 
         {!loading && !error ? (
           <>
-            <div className="depth-chart-grid live-grid">
+            <div className={`depth-chart-grid live-grid ${draggingPlayerId ? 'drag-active' : ''}`}>
               {POSITION_ORDER.map((position) => (
                 <PositionColumn
                   key={position}
@@ -669,6 +708,7 @@ function TeamPage() {
                   onOpenPlayer={setSelectedPlayer}
                   editMode={editMode}
                   onDragStart={handleDragStart}
+                  onDragEnd={handleDragEnd}
                   onDropAt={handleDropAt}
                   onMovePlayer={setMovePlayerTarget}
                 />

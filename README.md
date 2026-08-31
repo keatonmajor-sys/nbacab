@@ -1,29 +1,11 @@
-# NBACAB
+# NBACAB V6 — Better Drag + Richer Player Cards
 
-NBA Coffee & Burritos — a visual NBA roster, stats, salary and CBA playground.
+Changes from V5:
+- Drag from anywhere on a player's photo, not a tiny six-dot handle.
+- Custom NBACAB player-card drag preview instead of the browser's file-thumbnail ghost.
+- The lower/info portion of every card remains a click/tap target for the full player profile.
+- Reordering compacts the source list immediately and fixes same-column insertion indexing.
+- Player cards now surface PTS, REB, AST, FG%, 3P%, FT%, 3PM, STL, BLK and TOV without changing the deeper profile behavior.
+- `/api/stats.js` now returns per-game 3PM from the existing BALLDONTLIE game-stat aggregation.
 
-## V5: Editable expected lineups
-
-This build includes:
-
-- React + Vite
-- All 30 NBA teams
-- Live active rosters from BALLDONTLIE
-- Player headshots matched from ESPN roster data
-- 2025-26 per-game stats calculated from BALLDONTLIE box scores
-- Player detail cards
-- Editable PG / SG / SF / PF / C depth chart
-- Unrestricted placement: listed positions never limit where a player can be placed
-- Drag-and-drop controls on desktop
-- Tap-friendly Move controls as an alternative to dragging
-- Local persistence of custom lineups
-- Reset-to-expected-lineup control
-- Portland expected starting five preset to Ja Morant / Damian Lillard / Deni Avdija / Toumani Camara / Donovan Clingan
-
-## Next data layers
-
-- Expected starting lineup feed for all 30 teams
-- Injury / availability data
-- BALLDONTLIE GOAT contract and salary data
-- Supabase persistence for saved lineups across devices/users
-- CBA engine
+Upload all files in this folder to the root of the GitHub repo and commit to main.

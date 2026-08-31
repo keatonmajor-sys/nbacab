@@ -101,6 +101,7 @@ function aggregateRows(rows, requestedPlayerIds) {
         plusMinus: gp ? round(bucket.plusMinus / gp, 1) : 0,
         fgPct: pct(bucket.fgm, bucket.fga),
         fg3Pct: pct(bucket.fg3m, bucket.fg3a),
+        fg3m: gp ? round(bucket.fg3m / gp, 1) : 0,
         ftPct: pct(bucket.ftm, bucket.fta),
         totals: {
           pts: bucket.pts,
