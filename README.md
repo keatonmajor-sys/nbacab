@@ -47,3 +47,14 @@ Mobile card sizing refinement:
 - Player modal defaults to current/future salary rows; previous salary history is collapsed.
 - Added 2026-27 official NBA cap, tax, first-apron and second-apron thresholds.
 - Team cap position is labeled as an estimate based on matched BALLDONTLIE active-roster cap hits; it does not pretend unmatched contracts/non-roster charges are zero.
+
+## V15 — contract reliability + universal cap fallback
+
+- Contract priority is now BALLDONTLIE GOAT first, then Spotrac for missing 2026-27 cap hits, then Basketball Reference as a salary-only last fallback.
+- Spotrac fallback is team-agnostic and mapped for all 30 NBA teams.
+- Spotrac player links are retained so a fallback player's current/future contract rows can be loaded when the player card opens.
+- Basketball Reference rows are intentionally not counted as exact cap hits because salary and CBA cap hit can differ.
+- The contract header now reports fallback usage.
+- The cap overview prefers Spotrac's team-level Total Cap / allocation number when the page is reachable; otherwise it uses the sum of exact matched cap hits.
+- NBA 2026-27 thresholds remain the official values: cap $164.961M, tax $200.428M, first apron $209.015M, second apron $221.686M.
+- RealGM remains a useful manual cross-check for transactions and league threshold history, but V15 does not depend on scraping it at runtime.

@@ -16,6 +16,10 @@ function fullName(player) {
   return `${player.first_name} ${player.last_name}`.trim()
 }
 
+function normalizePlayerName(value = '') {
+  return String(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '')
+}
+
 function money(value, compact = false) {
   const amount = Number(value)
   if (!Number.isFinite(amount)) return '—'
@@ -363,7 +367,7 @@ function PlayerCard({ player, starter, stats, statsLoading, contract, onOpen, ed
             {player.height ? <span>{player.height}</span> : null}
             {player.weight ? <span>{player.weight} lb</span> : null}
           </div>
-          {contract ? <div className="card-salary">{money(contract.cap_hit ?? contract.base_salary, true)} cap hit</div> : null}
+          {contract ? <div className="card-salary">{money(contract.cap_hit ?? contract.base_salary, true)} {contract.cap_hit != null ? 'cap hit' : 'salary'}</div> : null}
           <div className="desktop-card-stats">
             {statsLoading ? <div className="stats-loading-line" aria-label="Loading stats"><span /><span /><span /></div> : <CardStats stats={stats} compact={!starter} />}
           </div>
@@ -521,7 +525,7 @@ function PlayerDetail({ player, stats, seasonLabel, contractSeason, contract, co
         <div className="detail-contract-section">
           <div className="detail-section-heading contract-heading">
             <div><span className="eyebrow">Contract</span><h3>Money & years</h3></div>
-            {contract ? <strong className="contract-cap-hit">{money(contract.cap_hit ?? contract.base_salary, true)} cap hit</strong> : null}
+            {contract ? <strong className="contract-cap-hit">{money(contract.cap_hit ?? contract.base_salary, true)} {contract.cap_hit != null ? 'cap hit' : 'salary'}</strong> : null}
           </div>
           {contractLoading ? <div className="detail-empty">Loading contract details…</div> : contractError ? <div className="detail-empty">{contractError}</div> : contractDetail ? (
             <>
@@ -550,6 +554,7 @@ function PlayerDetail({ player, stats, seasonLabel, contractSeason, contract, co
                 </>
               })() : <div className="detail-empty">No year-by-year contract rows returned.</div>}
               {contractDetail.aggregates?.[0]?.contract_notes?.length ? <div className="contract-notes">{contractDetail.aggregates[0].contract_notes.map((note) => <span key={note}>{note}</span>)}</div> : null}
+              <div className="contract-source-line">Source: {contractDetail.detailSource || contract?.source || 'BALLDONTLIE'}{contract?.source_type === 'fallback' ? ' fallback' : ''}</div>
             </>
           ) : <div className="detail-empty">No contract details loaded.</div>}
         </div>
@@ -589,6 +594,8 @@ function TeamPage() {
   const [contractDetail, setContractDetail] = useState(null)
   const [contractDetailLoading, setContractDetailLoading] = useState(false)
   const [contractDetailError, setContractDetailError] = useState('')
+  const [teamCapData, setTeamCapData] = useState(null)
+  const [contractSources, setContractSources] = useState({})
 
   useEffect(() => {
     if (!team) return
@@ -645,21 +652,43 @@ function TeamPage() {
   }, [players])
 
   useEffect(() => {
-    if (!team) return
+    if (!team || !players.length) return
     const controller = new AbortController()
     async function loadContracts() {
       setContractsLoading(true); setContractsError('')
       try {
-        const response = await fetch(`/api/contracts?teamId=${team.id}&season=2026`, { signal: controller.signal })
+        const params = new URLSearchParams({ teamId: String(team.id), teamAbbr: team.abbr, season: '2026' })
+        const response = await fetch(`/api/contracts?${params.toString()}`, { signal: controller.signal })
         const payload = await response.json()
         if (!response.ok) throw new Error(payload?.error || 'Unable to load contracts.')
-        setContractsByPlayer(payload?.byPlayer || {})
+        const primary = payload?.byPlayer || {}
+        const spotrac = payload?.spotracByName || {}
+        const bref = payload?.brefByName || {}
+        const merged = {}
+        players.forEach((player) => {
+          const direct = primary[player.id]
+          if (direct && (direct.cap_hit != null || direct.base_salary != null)) {
+            merged[player.id] = direct
+            return
+          }
+          const key = normalizePlayerName(fullName(player))
+          const spotracFallback = spotrac[key]
+          if (spotracFallback && (spotracFallback.cap_hit != null || spotracFallback.base_salary != null)) {
+            merged[player.id] = spotracFallback
+            return
+          }
+          const brefFallback = bref[key]
+          if (brefFallback?.base_salary != null) merged[player.id] = brefFallback
+        })
+        setContractsByPlayer(merged)
+        setTeamCapData(payload?.teamCap || null)
+        setContractSources(payload?.sources || {})
         setContractSeason(Number(payload?.season || 2026))
       } catch (err) { if (err.name !== 'AbortError') setContractsError(err.message || 'Unable to load contracts.') }
       finally { if (!controller.signal.aborted) setContractsLoading(false) }
     }
     loadContracts(); return () => controller.abort()
-  }, [team?.id])
+  }, [team?.id, team?.abbr, players])
 
   useEffect(() => {
     if (!selectedPlayer) { setContractDetail(null); setContractDetailError(''); return }
@@ -667,7 +696,10 @@ function TeamPage() {
     async function loadContractDetail() {
       setContractDetailLoading(true); setContractDetailError(''); setContractDetail(null)
       try {
-        const response = await fetch(`/api/contracts?playerId=${selectedPlayer.id}`, { signal: controller.signal })
+        const selectedContract = contractsByPlayer[selectedPlayer.id]
+        const params = new URLSearchParams({ playerId: String(selectedPlayer.id), season: String(contractSeason || 2026) })
+        if (selectedContract?.spotrac_path) params.set('spotracPath', selectedContract.spotrac_path)
+        const response = await fetch(`/api/contracts?${params.toString()}`, { signal: controller.signal })
         const payload = await response.json()
         if (!response.ok) throw new Error(payload?.error || 'Unable to load contract details.')
         setContractDetail(payload)
@@ -675,7 +707,7 @@ function TeamPage() {
       finally { if (!controller.signal.aborted) setContractDetailLoading(false) }
     }
     loadContractDetail(); return () => controller.abort()
-  }, [selectedPlayer?.id])
+  }, [selectedPlayer?.id, contractsByPlayer, contractSeason])
 
   const expectedDepthChart = useMemo(() => buildExpectedDepthChart(players, team?.abbr), [players, team?.abbr])
   const [depthChart, setDepthChart] = useState(() => Object.fromEntries(POSITION_ORDER.map((position) => [position, []])))
@@ -762,14 +794,20 @@ function TeamPage() {
 
   const CAP_2026 = { cap: 164961000, tax: 200428000, firstApron: 209015000, secondApron: 221686000 }
   const matchedContractCount = players.filter((player) => contractsByPlayer[player.id]).length
+  const exactCapMatchCount = players.filter((player) => contractsByPlayer[player.id]?.cap_hit != null).length
+  const fallbackCount = players.filter((player) => contractsByPlayer[player.id]?.source_type === 'fallback').length
   const knownRosterCap = players.reduce((sum, player) => {
     const row = contractsByPlayer[player.id]
-    return sum + Number(row?.cap_hit ?? row?.base_salary ?? 0)
+    return sum + Number(row?.cap_hit ?? 0)
   }, 0)
-  const capRoom = CAP_2026.cap - knownRosterCap
-  const taxRoom = CAP_2026.tax - knownRosterCap
-  const firstApronRoom = CAP_2026.firstApron - knownRosterCap
-  const secondApronRoom = CAP_2026.secondApron - knownRosterCap
+  const spotracTotalCap = Number(teamCapData?.totalCap)
+  const capBasis = Number.isFinite(spotracTotalCap) && spotracTotalCap > 0 ? spotracTotalCap : knownRosterCap
+  const capBasisLabel = Number.isFinite(spotracTotalCap) && spotracTotalCap > 0 ? 'Spotrac total allocations' : 'Matched roster cap hits'
+  const activeRosterBasis = Number.isFinite(Number(teamCapData?.activeRoster)) && Number(teamCapData?.activeRoster) > 0 ? Number(teamCapData.activeRoster) : knownRosterCap
+  const capRoom = CAP_2026.cap - capBasis
+  const taxRoom = CAP_2026.tax - activeRosterBasis
+  const firstApronRoom = Number.isFinite(Number(teamCapData?.firstApronSpace)) && Number(teamCapData?.firstApronSpace) >= 0 ? Number(teamCapData.firstApronSpace) : CAP_2026.firstApron - activeRosterBasis
+  const secondApronRoom = Number.isFinite(Number(teamCapData?.secondApronSpace)) && Number(teamCapData?.secondApronSpace) >= 0 ? Number(teamCapData.secondApronSpace) : CAP_2026.secondApron - activeRosterBasis
   const roomLabel = (value) => `${money(Math.abs(value), true)} ${value >= 0 ? 'under' : 'over'}`
 
   return (
@@ -789,13 +827,13 @@ function TeamPage() {
         <div><span>Roster</span><strong>{loading ? 'Loading…' : `${players.length} active`}</strong></div>
         <div><span>Photos</span><strong>{loading ? 'Matching…' : `${imageMatches}/${players.length} matched`}</strong></div>
         <div><span>Stats</span><strong>{statsLoading ? 'Calculating…' : statsError ? 'Unavailable' : seasonLabel ? `${seasonLabel} latest` : 'Waiting…'}</strong></div>
-        <div><span>Contracts</span><strong>{contractsLoading ? 'Loading…' : contractsError ? 'Unavailable' : `${matchedContractCount}/${players.length} matched · ${contractSeason}-${String(contractSeason + 1).slice(-2)}`}</strong></div>
+        <div><span>Contracts</span><strong>{contractsLoading ? 'Loading…' : contractsError ? 'Unavailable' : `${matchedContractCount}/${players.length} matched · ${fallbackCount ? `${fallbackCount} fallback · ` : ''}${contractSeason}-${String(contractSeason + 1).slice(-2)}`}</strong></div>
       </section>
 
       <section className="cap-overview">
         <div className="cap-overview-heading">
           <div><span className="eyebrow">2026-27 CBA</span><h2>Cap overview</h2></div>
-          <div className="cap-known"><span>Matched roster cap hits</span><strong>{contractsLoading ? 'Loading…' : money(knownRosterCap, true)}</strong><small>{matchedContractCount}/{players.length} active players matched</small></div>
+          <div className="cap-known"><span>{capBasisLabel}</span><strong>{contractsLoading ? 'Loading…' : money(capBasis, true)}</strong><small>{exactCapMatchCount}/{players.length} exact cap hits · {fallbackCount} fallback</small></div>
         </div>
         <div className="cap-threshold-grid">
           <div><span>Salary cap</span><strong>{money(CAP_2026.cap, true)}</strong><small>{roomLabel(capRoom)}</small></div>
@@ -803,7 +841,7 @@ function TeamPage() {
           <div><span>1st apron</span><strong>{money(CAP_2026.firstApron, true)}</strong><small>{roomLabel(firstApronRoom)}</small></div>
           <div><span>2nd apron</span><strong>{money(CAP_2026.secondApron, true)}</strong><small>{roomLabel(secondApronRoom)}</small></div>
         </div>
-        <p className="cap-disclaimer">NBA 2026-27 thresholds are official. Team room is calculated from the BALLDONTLIE cap hits currently matched to this active roster, so it remains an estimate until every contract and any non-roster cap charges are accounted for.</p>
+        <p className="cap-disclaimer">NBA 2026-27 thresholds are official. Contract priority is BALLDONTLIE → Spotrac fallback → Basketball Reference salary fallback. When Spotrac team totals are available, NBACAB uses them for the cap overview; otherwise it falls back to exact matched player cap hits. Basketball Reference salary-only rows are never treated as exact cap hits.</p>
       </section>
 
       <section className="depth-chart-section">

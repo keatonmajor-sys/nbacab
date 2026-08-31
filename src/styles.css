@@ -531,3 +531,5 @@ button { font: inherit; }
 .cap-disclaimer{margin:14px 2px 0;color:#777f91;font-size:12px;line-height:1.5}
 .previous-contracts{margin-top:12px}.previous-contracts summary{cursor:pointer;color:#a0a7b6;font-weight:800;font-size:12px;text-transform:uppercase;letter-spacing:.08em;padding:10px 0}.contract-years.previous{opacity:.72;margin-top:4px}
 @media(max-width:720px){.cap-overview{padding:16px;margin:20px 0 30px;border-radius:18px}.cap-overview-heading{align-items:flex-start;flex-direction:column;gap:12px}.cap-known{text-align:left}.cap-known strong{font-size:24px}.cap-threshold-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.cap-threshold-grid>div{padding:12px;border-bottom:1px solid #292e39}.cap-threshold-grid>div:nth-child(2){border-right:0}.cap-threshold-grid>div:nth-child(3),.cap-threshold-grid>div:nth-child(4){border-bottom:0}.cap-threshold-grid strong{font-size:17px}}
+
+.contract-source-line{margin-top:12px;color:var(--muted,#8b93a5);font-size:11px;letter-spacing:.04em;text-transform:uppercase}
