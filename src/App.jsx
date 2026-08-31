@@ -16,6 +16,16 @@ function fullName(player) {
   return `${player.first_name} ${player.last_name}`.trim()
 }
 
+function money(value, compact = false) {
+  const amount = Number(value)
+  if (!Number.isFinite(amount)) return '—'
+  if (compact) {
+    if (amount >= 1000000) return `$${(amount / 1000000).toFixed(amount >= 10000000 ? 1 : 2).replace(/\.0$/, '')}M`
+    if (amount >= 1000) return `$${Math.round(amount / 1000)}K`
+  }
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(amount)
+}
+
 function storageKey(teamAbbr) {
   return `nbacab-depth-chart-v1:${teamAbbr}`
 }
@@ -315,7 +325,7 @@ function EndDropZone({ position, index, editMode, onDropAt, empty = false }) {
   )
 }
 
-function PlayerCard({ player, starter, stats, statsLoading, onOpen, editMode, onDragStart, onDragEnd, onMove, onDropOnCard, position, depthIndex, mobileStatKey }) {
+function PlayerCard({ player, starter, stats, statsLoading, contract, onOpen, editMode, onDragStart, onDragEnd, onMove, onDropOnCard, position, depthIndex, mobileStatKey }) {
   const name = fullName(player)
   const mobileLabel = MOBILE_STAT_OPTIONS.find(([, key]) => key === mobileStatKey)?.[0] || 'PTS'
   return (
@@ -353,6 +363,7 @@ function PlayerCard({ player, starter, stats, statsLoading, onOpen, editMode, on
             {player.height ? <span>{player.height}</span> : null}
             {player.weight ? <span>{player.weight} lb</span> : null}
           </div>
+          {contract ? <div className="card-salary">{money(contract.cap_hit ?? contract.base_salary, true)} cap hit</div> : null}
           <div className="desktop-card-stats">
             {statsLoading ? <div className="stats-loading-line" aria-label="Loading stats"><span /><span /><span /></div> : <CardStats stats={stats} compact={!starter} />}
           </div>
@@ -372,7 +383,7 @@ function PlayerCard({ player, starter, stats, statsLoading, onOpen, editMode, on
   )
 }
 
-function PositionColumn({ label, players, statsByPlayer, statsLoading, onOpenPlayer, editMode, onDragStart, onDragEnd, onDropAt, onDropOnCard, onMovePlayer, mobileStatKey }) {
+function PositionColumn({ label, players, statsByPlayer, statsLoading, contractsByPlayer, onOpenPlayer, editMode, onDragStart, onDragEnd, onDropAt, onDropOnCard, onMovePlayer, mobileStatKey }) {
   return (
     <div className={`position-column ${editMode ? 'editable-column' : ''}`}>
       <div className="position-label"><strong>{label}</strong><span>{players.length}</span></div>
@@ -384,6 +395,7 @@ function PositionColumn({ label, players, statsByPlayer, statsLoading, onOpenPla
               starter={index === 0}
               stats={statsByPlayer[player.id]}
               statsLoading={statsLoading}
+              contract={contractsByPlayer[player.id]}
               onOpen={onOpenPlayer}
               editMode={editMode}
               onDragStart={onDragStart}
@@ -436,7 +448,7 @@ function Metric({ label, value }) {
   )
 }
 
-function PlayerDetail({ player, stats, seasonLabel, onClose }) {
+function PlayerDetail({ player, stats, seasonLabel, contract, contractDetail, contractLoading, contractError, onClose }) {
   useEffect(() => {
     if (!player) return undefined
     function onKeyDown(event) {
@@ -506,9 +518,30 @@ function PlayerDetail({ player, stats, seasonLabel, onClose }) {
           <div className="detail-empty">No regular-season game stats were returned for this player in {seasonLabel || 'the selected season'}.</div>
         )}
 
-        <div className="detail-coming">
-          <span>Next on this card</span>
-          <strong>Salary · Contract years · CBA status</strong>
+        <div className="detail-contract-section">
+          <div className="detail-section-heading contract-heading">
+            <div><span className="eyebrow">Contract</span><h3>Money & years</h3></div>
+            {contract ? <strong className="contract-cap-hit">{money(contract.cap_hit ?? contract.base_salary, true)} cap hit</strong> : null}
+          </div>
+          {contractLoading ? <div className="detail-empty">Loading contract details…</div> : contractError ? <div className="detail-empty">{contractError}</div> : contractDetail ? (
+            <>
+              {contractDetail.aggregates?.[0] ? (() => { const deal = contractDetail.aggregates[0]; return (
+                <div className="contract-summary">
+                  <Metric label="TOTAL VALUE" value={money(deal.total_value, true)} />
+                  <Metric label="YEARS" value={deal.contract_years ?? '—'} />
+                  <Metric label="GUARANTEED" value={money(deal.total_guaranteed, true)} />
+                  <Metric label="AVG / YEAR" value={money(deal.average_salary, true)} />
+                  <Metric label="FREE AGENT" value={deal.free_agent_year ? `${deal.free_agent_year} ${deal.free_agent_status || ''}`.trim() : '—'} />
+                </div>
+              )})() : null}
+              {contractDetail.years?.length ? <div className="contract-years">
+                {contractDetail.years.slice().sort((a,b) => a.season-b.season).map((year) => (
+                  <div className="contract-year" key={year.id || year.season}><span>{year.season}-{String(year.season + 1).slice(-2)}</span><strong>{money(year.cap_hit ?? year.base_salary)}</strong></div>
+                ))}
+              </div> : <div className="detail-empty">No year-by-year contract rows returned.</div>}
+              {contractDetail.aggregates?.[0]?.contract_notes?.length ? <div className="contract-notes">{contractDetail.aggregates[0].contract_notes.map((note) => <span key={note}>{note}</span>)}</div> : null}
+            </>
+          ) : <div className="detail-empty">No contract details loaded.</div>}
         </div>
       </section>
     </div>
@@ -539,6 +572,12 @@ function TeamPage() {
   const [statsError, setStatsError] = useState('')
   const [seasonLabel, setSeasonLabel] = useState('')
   const [selectedPlayer, setSelectedPlayer] = useState(null)
+  const [contractsByPlayer, setContractsByPlayer] = useState({})
+  const [contractsLoading, setContractsLoading] = useState(false)
+  const [contractsError, setContractsError] = useState('')
+  const [contractDetail, setContractDetail] = useState(null)
+  const [contractDetailLoading, setContractDetailLoading] = useState(false)
+  const [contractDetailError, setContractDetailError] = useState('')
 
   useEffect(() => {
     if (!team) return
@@ -593,6 +632,38 @@ function TeamPage() {
     loadStats()
     return () => controller.abort()
   }, [players])
+
+  useEffect(() => {
+    if (!team) return
+    const controller = new AbortController()
+    async function loadContracts() {
+      setContractsLoading(true); setContractsError('')
+      try {
+        const response = await fetch(`/api/contracts?teamId=${team.id}`, { signal: controller.signal })
+        const payload = await response.json()
+        if (!response.ok) throw new Error(payload?.error || 'Unable to load contracts.')
+        setContractsByPlayer(payload?.byPlayer || {})
+      } catch (err) { if (err.name !== 'AbortError') setContractsError(err.message || 'Unable to load contracts.') }
+      finally { if (!controller.signal.aborted) setContractsLoading(false) }
+    }
+    loadContracts(); return () => controller.abort()
+  }, [team?.id])
+
+  useEffect(() => {
+    if (!selectedPlayer) { setContractDetail(null); setContractDetailError(''); return }
+    const controller = new AbortController()
+    async function loadContractDetail() {
+      setContractDetailLoading(true); setContractDetailError(''); setContractDetail(null)
+      try {
+        const response = await fetch(`/api/contracts?playerId=${selectedPlayer.id}`, { signal: controller.signal })
+        const payload = await response.json()
+        if (!response.ok) throw new Error(payload?.error || 'Unable to load contract details.')
+        setContractDetail(payload)
+      } catch (err) { if (err.name !== 'AbortError') setContractDetailError(err.message || 'Unable to load contract details.') }
+      finally { if (!controller.signal.aborted) setContractDetailLoading(false) }
+    }
+    loadContractDetail(); return () => controller.abort()
+  }, [selectedPlayer?.id])
 
   const expectedDepthChart = useMemo(() => buildExpectedDepthChart(players, team?.abbr), [players, team?.abbr])
   const [depthChart, setDepthChart] = useState(() => Object.fromEntries(POSITION_ORDER.map((position) => [position, []])))
@@ -694,7 +765,7 @@ function TeamPage() {
         <div><span>Roster</span><strong>{loading ? 'Loading…' : `${players.length} active`}</strong></div>
         <div><span>Photos</span><strong>{loading ? 'Matching…' : `${imageMatches}/${players.length} matched`}</strong></div>
         <div><span>Stats</span><strong>{statsLoading ? 'Calculating…' : statsError ? 'Unavailable' : seasonLabel ? `${seasonLabel} live` : 'Waiting…'}</strong></div>
-        <div><span>Salaries</span><strong>Next layer</strong></div>
+        <div><span>Salaries</span><strong>{contractsLoading ? 'Loading…' : contractsError ? 'Unavailable' : `${Object.keys(contractsByPlayer).length} loaded`}</strong></div>
       </section>
 
       <section className="depth-chart-section">
@@ -739,6 +810,7 @@ function TeamPage() {
                   players={depthChart[position]}
                   statsByPlayer={statsByPlayer}
                   statsLoading={statsLoading}
+                  contractsByPlayer={contractsByPlayer}
                   onOpenPlayer={setSelectedPlayer}
                   editMode={editMode}
                   onDragStart={handleDragStart}
@@ -761,6 +833,10 @@ function TeamPage() {
         player={selectedPlayer}
         stats={selectedPlayer ? statsByPlayer[selectedPlayer.id] : null}
         seasonLabel={seasonLabel}
+        contract={selectedPlayer ? contractsByPlayer[selectedPlayer.id] : null}
+        contractDetail={contractDetail}
+        contractLoading={contractDetailLoading}
+        contractError={contractDetailError}
         onClose={() => setSelectedPlayer(null)}
       />
       <MovePlayerPanel
