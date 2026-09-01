@@ -45,7 +45,6 @@ function AppShell({ children }) {
             <small>NBA Coffee & Burritos</small>
           </span>
         </Link>
-        <div className="header-tag">Roster playground</div>
       </header>
       <main>{children}</main>
     </div>
@@ -84,10 +83,7 @@ function TeamSection({ title, teamsForConference }) {
   return (
     <section className="conference-section">
       <div className="section-heading">
-        <div>
-          <span className="eyebrow">Conference</span>
-          <h2>{title}</h2>
-        </div>
+        <h2>{title}</h2>
         <span className="team-count">15 teams</span>
       </div>
       <div className="team-grid">
@@ -106,15 +102,20 @@ function HomePage() {
       <section className="hero">
         <div className="hero-copy">
           <span className="eyebrow">All 30 teams. One clean view.</span>
-          <h1>The NBA, without the spreadsheet energy.</h1>
-          <p>Browse every roster, move starters around, compare stats and salaries, and eventually go as deep into the CBA as you want.</p>
+          <h1>See the league. Move some pieces.</h1>
+          <p>Rosters, depth charts, stats, contracts and cap space. All in one place.</p>
         </div>
-        <div className="hero-pill-row" aria-label="NBACAB feature preview">
-          <span>30 teams</span><span>Live rosters</span><span>Player photos</span><span>Real stats</span><span>CBA engine</span>
+        <div className="hero-court" aria-hidden="true">
+          <span className="court-center" />
+          <span className="court-lane" />
+          <span className="court-arc" />
+          <span className="court-rim" />
         </div>
       </section>
-      <TeamSection title="Eastern Conference" teamsForConference={east} />
-      <TeamSection title="Western Conference" teamsForConference={west} />
+      <div className="conference-layout">
+        <TeamSection title="Eastern Conference" teamsForConference={east} />
+        <TeamSection title="Western Conference" teamsForConference={west} />
+      </div>
     </AppShell>
   )
 }
