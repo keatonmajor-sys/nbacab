@@ -96,6 +96,7 @@ function parseSpotracTeam(html, season) {
     const cashIndex = headerIndex(headers, ['cash total', 'cash'])
     const guaranteedIndex = headerIndex(headers, ['guaranteed'])
     const faIndex = headerIndex(headers, ['free agent year', 'free agent'])
+    const typeIndex = headerIndex(headers, ['contract type', 'type', 'status'])
 
     $(table).find('tbody tr').each((_, row) => {
       const cells = $(row).find('td,th')
@@ -121,6 +122,7 @@ function parseSpotracTeam(html, season) {
         cash_total: cashTotal,
         guaranteed: guaranteedIndex >= 0 ? parseMoney(values[guaranteedIndex]) : null,
         free_agent_year: faIndex >= 0 ? Number(String(values[faIndex]).match(/20\d{2}/)?.[0] || 0) || null : null,
+        contract_type: typeIndex >= 0 ? values[typeIndex] || null : null,
         spotrac_path: href,
         source: 'Spotrac',
         source_type: 'fallback',

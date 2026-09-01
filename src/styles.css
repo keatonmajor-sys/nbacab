@@ -871,3 +871,22 @@ button { font: inherit; }
   .trade-flow-asset select { width:100%; max-width:none; }
   .trade-result-badge { min-height:48px; }
 }
+
+/* V19.1: trade-machine QA, result hierarchy, and clipped-header fix */
+.trade-page { padding-top:20px; }
+.trade-topbar { padding-top:22px; }
+.trade-hero { padding-top:46px; }
+.trade-rule-priority { padding-top:3px; }
+.trade-all-clear { padding:12px; color:#86d7ad; font-size:.64rem; font-weight:800; }
+.trade-passed-checks { border-top:1px solid rgba(255,255,255,.055); }
+.trade-passed-checks summary { cursor:pointer; list-style:none; padding:10px 12px; color:#7f8796; font-size:.58rem; font-weight:850; letter-spacing:.035em; }
+.trade-passed-checks summary::-webkit-details-marker { display:none; }
+.trade-passed-checks summary::after { content:'＋'; float:right; color:#676f7e; }
+.trade-passed-checks[open] summary::after { content:'−'; }
+.trade-passed-checks[open] summary { color:#aeb5c1; }
+.trade-passed-checks .trade-rule-list { border-top:1px solid rgba(255,255,255,.045); }
+@media (max-width:720px) {
+  .trade-page { padding-top:10px; }
+  .trade-topbar { padding-top:16px; }
+  .trade-hero { padding-top:30px; }
+}

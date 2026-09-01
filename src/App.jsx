@@ -722,7 +722,8 @@ function TradeResultBadge({ status }) {
 }
 
 function TradeValidationResult({ result }) {
-  if (!result) return null
+  const issues = result.lines.filter((item) => item.status !== 'pass')
+  const passed = result.lines.filter((item) => item.status === 'pass')
   return (
     <div className={`trade-team-result ${result.status}`}>
       <div className="trade-team-result-head">
@@ -730,16 +731,63 @@ function TradeValidationResult({ result }) {
         <div><span>{result.team.abbr}</span><strong>{result.method}</strong></div>
         <em>{result.status === 'pass' ? 'PASS' : result.status === 'fail' ? 'FAIL' : 'REVIEW'}</em>
       </div>
-      <div className="trade-rule-list">
-        {result.lines.map((item) => (
-          <div className={`trade-rule-line ${item.status}`} key={item.code}>
-            <span className="trade-rule-icon">{item.status === 'pass' ? '✓' : item.status === 'fail' ? '×' : '!'}</span>
-            <div><strong>{item.title}</strong><p>{item.detail}</p></div>
+      {issues.length > 0 ? (
+        <div className="trade-rule-list trade-rule-priority">
+          {issues.map((item) => (
+            <div className={`trade-rule-line ${item.status}`} key={item.code}>
+              <span className="trade-rule-icon">{item.status === 'fail' ? '×' : '!'}</span>
+              <div><strong>{item.title}</strong><p>{item.detail}</p></div>
+            </div>
+          ))}
+        </div>
+      ) : <div className="trade-all-clear">All checked rules passed.</div>}
+      {passed.length > 0 ? (
+        <details className="trade-passed-checks">
+          <summary>{passed.length} passed {passed.length === 1 ? 'check' : 'checks'}</summary>
+          <div className="trade-rule-list">
+            {passed.map((item) => (
+              <div className="trade-rule-line pass" key={item.code}>
+                <span className="trade-rule-icon">✓</span>
+                <div><strong>{item.title}</strong><p>{item.detail}</p></div>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        </details>
+      ) : null}
     </div>
   )
+}
+
+function contractText(contract = {}) {
+  return Object.entries(contract || {})
+    .filter(([key, value]) => /type|status|contract|note|designation/i.test(key) && value != null)
+    .map(([, value]) => String(value))
+    .join(' ')
+    .toLowerCase()
+}
+
+function rosterTypeFor(player, contract) {
+  const text = `${contractText(contract)} ${contractText(player)}`
+  if (/two[ -]?way|2[ -]?way/.test(text)) return 'two-way'
+  if (/standard nba|standard contract|rookie scale|veteran minimum|minimum contract|extension|designated veteran/.test(text)) return 'standard'
+  // A trustworthy cap hit materially above a two-way salary is strong evidence of a standard NBA contract.
+  const salary = Number(contract?.cap_hit ?? contract?.base_salary)
+  if (Number.isFinite(salary) && salary >= 1_000_000) return 'standard'
+  return 'unknown'
+}
+
+function buildRosterSnapshot(players, contracts) {
+  return players.reduce((snapshot, player) => {
+    const type = rosterTypeFor(player, contracts[player.id])
+    if (type === 'standard') snapshot.standardKnown += 1
+    else if (type === 'two-way') snapshot.twoWayKnown += 1
+    else snapshot.unknown += 1
+    return snapshot
+  }, { standardKnown: 0, twoWayKnown: 0, unknown: 0 })
+}
+
+function salaryListFor(players, contracts) {
+  return players.map((player) => Number(contracts[player.id]?.cap_hit ?? contracts[player.id]?.base_salary)).filter(Number.isFinite)
 }
 
 function TradeMachinePage() {
@@ -850,24 +898,28 @@ function TradeMachinePage() {
       setTradeResult({ status: 'review', error: 'One or more selected players is missing a usable 2026-27 salary. NBACAB will not validate the deal until those salaries are available.', teams: [] })
       return
     }
+    const rosterSnapshotA = buildRosterSnapshot(dataA.players, dataA.contracts)
+    const rosterSnapshotB = buildRosterSnapshot(dataB.players, dataB.contracts)
     const resultA = validateTradeTeam({
       team: primaryTeam,
       preSalary: activeA > 0 ? activeA : null,
-      outgoingSalary: salaryA,
-      incomingSalary: salaryB,
-      outgoingPlayerCount: selectedPlayersA.length,
-      incomingPlayerCount: selectedPlayersB.length,
-      rosterCount: dataA.players.length,
+      outgoingSalaries: salaryListFor(selectedPlayersA, dataA.contracts),
+      incomingSalaries: salaryListFor(selectedPlayersB, dataB.contracts),
+      rosterSnapshot: rosterSnapshotA,
+      outgoingRosterTypes: selectedPlayersA.map((player) => rosterTypeFor(player, dataA.contracts[player.id])),
+      incomingRosterTypes: selectedPlayersB.map((player) => rosterTypeFor(player, dataB.contracts[player.id])),
+      outgoingPlayers: selectedPlayersA,
       outgoingAssets: assetsA,
     })
     const resultB = validateTradeTeam({
       team: opponentTeam,
       preSalary: activeB > 0 ? activeB : null,
-      outgoingSalary: salaryB,
-      incomingSalary: salaryA,
-      outgoingPlayerCount: selectedPlayersB.length,
-      incomingPlayerCount: selectedPlayersA.length,
-      rosterCount: dataB.players.length,
+      outgoingSalaries: salaryListFor(selectedPlayersB, dataB.contracts),
+      incomingSalaries: salaryListFor(selectedPlayersA, dataA.contracts),
+      rosterSnapshot: rosterSnapshotB,
+      outgoingRosterTypes: selectedPlayersB.map((player) => rosterTypeFor(player, dataB.contracts[player.id])),
+      incomingRosterTypes: selectedPlayersA.map((player) => rosterTypeFor(player, dataA.contracts[player.id])),
+      outgoingPlayers: selectedPlayersB,
       outgoingAssets: assetsB,
     })
     setTradeResult({ status: overallTradeStatus([resultA, resultB]), teams: [resultA, resultB] })
