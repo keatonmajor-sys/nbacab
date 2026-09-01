@@ -618,6 +618,207 @@ function LoadingRoster() {
   )
 }
 
+
+function TradePlayerRow({ player, contract, selected, onToggle }) {
+  const salary = Number(contract?.cap_hit ?? contract?.base_salary)
+  return (
+    <button
+      type="button"
+      className={`trade-player-row ${selected ? 'selected' : ''}`}
+      onClick={() => onToggle(player.id)}
+      aria-pressed={selected}
+    >
+      <div className="trade-player-photo"><PlayerImage player={player} /></div>
+      <div className="trade-player-copy">
+        <strong>{fullName(player)}</strong>
+        <span>{player.position || '—'}{Number.isFinite(salary) ? ` · ${money(salary, true)}` : ' · salary unavailable'}</span>
+      </div>
+      <span className="trade-select-mark">{selected ? '✓' : '+'}</span>
+    </button>
+  )
+}
+
+function TradeTeamPanel({ team, data, selectedIds, onToggle, sideLabel }) {
+  const selectedPlayers = data.players.filter((player) => selectedIds.includes(player.id))
+  const selectedSalary = selectedPlayers.reduce((sum, player) => sum + Number(data.contracts[player.id]?.cap_hit ?? data.contracts[player.id]?.base_salary ?? 0), 0)
+
+  return (
+    <section className="trade-team-panel">
+      <div className="trade-team-header">
+        <TeamLogo team={team} />
+        <div>
+          <span>{sideLabel}</span>
+          <h2>{team.city} {team.name}</h2>
+        </div>
+        <div className="trade-team-money"><span>Sending</span><strong>{selectedIds.length ? money(selectedSalary, true) : '$0'}</strong></div>
+      </div>
+      {data.loading ? <div className="trade-panel-state">Loading roster and contracts…</div> : data.error ? <div className="trade-panel-state error">{data.error}</div> : (
+        <div className="trade-player-list">
+          {data.players.map((player) => (
+            <TradePlayerRow key={player.id} player={player} contract={data.contracts[player.id]} selected={selectedIds.includes(player.id)} onToggle={onToggle} />
+          ))}
+        </div>
+      )}
+    </section>
+  )
+}
+
+function TradeMachinePage() {
+  const { teamAbbr } = useParams()
+  const primaryTeam = teams.find((item) => item.abbr.toLowerCase() === teamAbbr?.toLowerCase())
+  const defaultOpponent = teams.find((item) => item.abbr !== primaryTeam?.abbr)
+  const [opponentAbbr, setOpponentAbbr] = useState(defaultOpponent?.abbr || 'BOS')
+  const opponentTeam = teams.find((item) => item.abbr === opponentAbbr) || defaultOpponent
+  const [teamData, setTeamData] = useState({})
+  const [selectedA, setSelectedA] = useState([])
+  const [selectedB, setSelectedB] = useState([])
+
+  useEffect(() => {
+    setSelectedA([])
+    setSelectedB([])
+  }, [primaryTeam?.abbr, opponentAbbr])
+
+  useEffect(() => {
+    const requested = [primaryTeam, opponentTeam].filter(Boolean)
+    const controllers = []
+
+    requested.forEach((currentTeam) => {
+      if (teamData[currentTeam.abbr]?.loaded || teamData[currentTeam.abbr]?.loading) return
+      const controller = new AbortController()
+      controllers.push(controller)
+      setTeamData((current) => ({ ...current, [currentTeam.abbr]: { players: [], contracts: {}, teamCap: null, loading: true, loaded: false, error: '' } }))
+
+      ;(async () => {
+        try {
+          const rosterParams = new URLSearchParams({ teamId: String(currentTeam.id), teamAbbr: currentTeam.abbr })
+          const rosterResponse = await fetch(`/api/roster?${rosterParams.toString()}`, { signal: controller.signal })
+          const rosterPayload = await rosterResponse.json()
+          if (!rosterResponse.ok) throw new Error(rosterPayload?.error || 'Unable to load roster.')
+          const rosterPlayers = Array.isArray(rosterPayload?.data) ? rosterPayload.data : []
+
+          const contractParams = new URLSearchParams({ teamId: String(currentTeam.id), teamAbbr: currentTeam.abbr, season: '2026' })
+          const contractResponse = await fetch(`/api/contracts?${contractParams.toString()}`, { signal: controller.signal })
+          const contractPayload = await contractResponse.json()
+          if (!contractResponse.ok) throw new Error(contractPayload?.error || 'Unable to load contracts.')
+
+          const primary = contractPayload?.byPlayer || {}
+          const spotrac = contractPayload?.spotracByName || {}
+          const bref = contractPayload?.brefByName || {}
+          const merged = {}
+          rosterPlayers.forEach((player) => {
+            const direct = primary[player.id]
+            if (direct && (direct.cap_hit != null || direct.base_salary != null)) { merged[player.id] = direct; return }
+            const key = normalizePlayerName(fullName(player))
+            const spotracFallback = spotrac[key]
+            if (spotracFallback && (spotracFallback.cap_hit != null || spotracFallback.base_salary != null)) { merged[player.id] = spotracFallback; return }
+            const brefFallback = bref[key]
+            if (brefFallback?.base_salary != null) merged[player.id] = brefFallback
+          })
+
+          setTeamData((current) => ({
+            ...current,
+            [currentTeam.abbr]: { players: rosterPlayers, contracts: merged, teamCap: contractPayload?.teamCap || null, loading: false, loaded: true, error: '' },
+          }))
+        } catch (err) {
+          if (err.name !== 'AbortError') setTeamData((current) => ({ ...current, [currentTeam.abbr]: { players: [], contracts: {}, teamCap: null, loading: false, loaded: false, error: err.message || 'Unable to load trade data.' } }))
+        }
+      })()
+    })
+
+    return () => controllers.forEach((controller) => controller.abort())
+  }, [primaryTeam?.abbr, opponentTeam?.abbr])
+
+  if (!primaryTeam || !opponentTeam) return <Navigate to="/" replace />
+
+  const emptyData = { players: [], contracts: {}, teamCap: null, loading: true, error: '' }
+  const dataA = teamData[primaryTeam.abbr] || emptyData
+  const dataB = teamData[opponentTeam.abbr] || emptyData
+  const selectedPlayersA = dataA.players.filter((player) => selectedA.includes(player.id))
+  const selectedPlayersB = dataB.players.filter((player) => selectedB.includes(player.id))
+  const salaryFor = (playersList, contracts) => playersList.reduce((sum, player) => sum + Number(contracts[player.id]?.cap_hit ?? contracts[player.id]?.base_salary ?? 0), 0)
+  const salaryA = salaryFor(selectedPlayersA, dataA.contracts)
+  const salaryB = salaryFor(selectedPlayersB, dataB.contracts)
+  const missingA = selectedPlayersA.filter((player) => !Number.isFinite(Number(dataA.contracts[player.id]?.cap_hit ?? dataA.contracts[player.id]?.base_salary))).length
+  const missingB = selectedPlayersB.filter((player) => !Number.isFinite(Number(dataB.contracts[player.id]?.cap_hit ?? dataB.contracts[player.id]?.base_salary))).length
+  const activeA = Number(dataA.teamCap?.activeRoster || dataA.teamCap?.totalCap || 0)
+  const activeB = Number(dataB.teamCap?.activeRoster || dataB.teamCap?.totalCap || 0)
+  const projectedA = activeA > 0 ? activeA - salaryA + salaryB : null
+  const projectedB = activeB > 0 ? activeB - salaryB + salaryA : null
+  const CAP = { cap: 164961000, tax: 200428000, firstApron: 209015000, secondApron: 221686000 }
+  const dealReady = selectedA.length > 0 && selectedB.length > 0
+  const cleanSalaryData = missingA === 0 && missingB === 0
+
+  const toggle = (setter) => (id) => setter((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id])
+  const thresholdLabel = (value) => {
+    if (!Number.isFinite(value)) return 'Team total unavailable'
+    if (value > CAP.secondApron) return 'Above 2nd apron'
+    if (value > CAP.firstApron) return 'Above 1st apron'
+    if (value > CAP.tax) return 'Above tax'
+    if (value > CAP.cap) return 'Above cap'
+    return 'Below cap'
+  }
+
+  return (
+    <AppShell>
+      <div className="trade-page">
+        <div className="trade-topbar">
+          <Link to={`/team/${primaryTeam.abbr.toLowerCase()}`} className="back-link">← {primaryTeam.name}</Link>
+          <button type="button" className="trade-reset-button" onClick={() => { setSelectedA([]); setSelectedB([]) }} disabled={!selectedA.length && !selectedB.length}>Clear trade</button>
+        </div>
+
+        <section className="trade-hero">
+          <div>
+            <span className="eyebrow">Trade machine · 2026-27</span>
+            <h1>Move pieces. See what changes.</h1>
+            <p>Choose players on both sides. NBACAB keeps the rosters, contracts and team money connected while you build the deal.</p>
+          </div>
+          <label className="trade-opponent-picker">
+            <span>Trade with</span>
+            <select value={opponentAbbr} onChange={(event) => setOpponentAbbr(event.target.value)}>
+              {teams.filter((item) => item.abbr !== primaryTeam.abbr).map((item) => <option key={item.abbr} value={item.abbr}>{item.city} {item.name}</option>)}
+            </select>
+          </label>
+        </section>
+
+        <div className="trade-workspace">
+          <TradeTeamPanel team={primaryTeam} data={dataA} selectedIds={selectedA} onToggle={toggle(setSelectedA)} sideLabel="Team A" />
+
+          <aside className="trade-deal-panel" aria-live="polite">
+            <div className="trade-deal-kicker">THE DEAL</div>
+            <div className="trade-flow-block">
+              <span>{primaryTeam.abbr} sends</span>
+              <strong>{selectedPlayersA.length ? selectedPlayersA.map(fullName).join(', ') : 'Pick players'}</strong>
+              <small>{selectedA.length ? money(salaryA, true) : '$0'}</small>
+            </div>
+            <div className="trade-flow-arrow"><span>⇄</span></div>
+            <div className="trade-flow-block">
+              <span>{opponentTeam.abbr} sends</span>
+              <strong>{selectedPlayersB.length ? selectedPlayersB.map(fullName).join(', ') : 'Pick players'}</strong>
+              <small>{selectedB.length ? money(salaryB, true) : '$0'}</small>
+            </div>
+
+            <div className={`trade-analysis-card ${dealReady ? 'active' : ''}`}>
+              <div className="trade-analysis-title">
+                <span className="trade-analysis-dot" />
+                <div><span>Trade analysis</span><strong>{!dealReady ? 'Build both sides' : !cleanSalaryData ? 'Needs salary data' : 'Ready for CBA review'}</strong></div>
+              </div>
+              <div className="trade-analysis-lines">
+                <div><span>{primaryTeam.abbr} money change</span><strong>{dealReady ? `${salaryB >= salaryA ? '+' : '−'}${money(Math.abs(salaryB - salaryA), true)}` : '—'}</strong></div>
+                <div><span>{opponentTeam.abbr} money change</span><strong>{dealReady ? `${salaryA >= salaryB ? '+' : '−'}${money(Math.abs(salaryA - salaryB), true)}` : '—'}</strong></div>
+                <div><span>{primaryTeam.abbr} after trade</span><strong>{projectedA ? `${money(projectedA, true)} · ${thresholdLabel(projectedA)}` : 'Team total unavailable'}</strong></div>
+                <div><span>{opponentTeam.abbr} after trade</span><strong>{projectedB ? `${money(projectedB, true)} · ${thresholdLabel(projectedB)}` : 'Team total unavailable'}</strong></div>
+              </div>
+              <p>{!dealReady ? 'Select at least one player from each team to analyze the shape of the deal.' : !cleanSalaryData ? 'One or more selected players is missing a usable current salary, so NBACAB will not pretend the trade can be validated.' : 'Salary movement is calculated from current contract data. Full CBA legality — including apron-specific matching, aggregation and transaction restrictions — is not claimed in this first trade build.'}</p>
+            </div>
+          </aside>
+
+          <TradeTeamPanel team={opponentTeam} data={dataB} selectedIds={selectedB} onToggle={toggle(setSelectedB)} sideLabel="Team B" />
+        </div>
+      </div>
+    </AppShell>
+  )
+}
+
 function TeamPage() {
   const { teamAbbr } = useParams()
   const team = teams.find((item) => item.abbr.toLowerCase() === teamAbbr?.toLowerCase())
@@ -893,6 +1094,9 @@ function TeamPage() {
           <span className="eyebrow">{team.conference}ern Conference</span>
           <h1>{team.city} {team.name}</h1>
           <p>Live roster, player photos and real box-score averages — designed to be understood at a glance.</p>
+          <div className="team-hero-actions">
+            <Link to={`/team/${team.abbr.toLowerCase()}/trade`} className="trade-entry-button">Trade Machine <span>↗</span></Link>
+          </div>
         </div>
       </section>
 
@@ -1024,6 +1228,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<HomePage />} />
+      <Route path="/team/:teamAbbr/trade" element={<TradeMachinePage />} />
       <Route path="/team/:teamAbbr" element={<TeamPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
