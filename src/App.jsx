@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, Navigate, Route, Routes, useParams } from 'react-router-dom'
 import { teams } from './data/teams.js'
+import { CBA_2026_27, apronLabel, overallTradeStatus, validateTradeTeam } from './tradeRules.js'
+import { PICK_PROTECTIONS, ownDraftAssets } from './draftAssets.js'
 
 const POSITION_ORDER = ['PG', 'SG', 'SF', 'PF', 'C']
 const MOBILE_STAT_OPTIONS = [
@@ -638,9 +640,29 @@ function TradePlayerRow({ player, contract, selected, onToggle }) {
   )
 }
 
-function TradeTeamPanel({ team, data, selectedIds, onToggle, sideLabel }) {
+function TradePickRow({ asset, selected, onToggle }) {
+  return (
+    <button
+      type="button"
+      className={`trade-pick-row ${selected ? 'selected' : ''}`}
+      onClick={() => onToggle(asset.id)}
+      aria-pressed={selected}
+    >
+      <div className="trade-pick-icon">{asset.kind === 'swap' ? '⇄' : asset.round}</div>
+      <div className="trade-player-copy">
+        <strong>{asset.label}</strong>
+        <span>{asset.kind === 'swap' ? 'Pick swap right' : asset.round === 1 ? 'First round' : 'Second round'} · ownership check required</span>
+      </div>
+      <span className="trade-select-mark">{selected ? '✓' : '+'}</span>
+    </button>
+  )
+}
+
+function TradeTeamPanel({ team, data, selectedIds, onTogglePlayer, selectedAssets, onToggleAsset, sideLabel }) {
+  const [tab, setTab] = useState('players')
   const selectedPlayers = data.players.filter((player) => selectedIds.includes(player.id))
   const selectedSalary = selectedPlayers.reduce((sum, player) => sum + Number(data.contracts[player.id]?.cap_hit ?? data.contracts[player.id]?.base_salary ?? 0), 0)
+  const draftAssets = useMemo(() => ownDraftAssets(team), [team.abbr])
 
   return (
     <section className="trade-team-panel">
@@ -652,14 +674,71 @@ function TradeTeamPanel({ team, data, selectedIds, onToggle, sideLabel }) {
         </div>
         <div className="trade-team-money"><span>Sending</span><strong>{selectedIds.length ? money(selectedSalary, true) : '$0'}</strong></div>
       </div>
-      {data.loading ? <div className="trade-panel-state">Loading roster and contracts…</div> : data.error ? <div className="trade-panel-state error">{data.error}</div> : (
+      <div className="trade-asset-tabs" role="tablist" aria-label={`${team.name} trade assets`}>
+        <button type="button" className={tab === 'players' ? 'active' : ''} onClick={() => setTab('players')}>Players <span>{selectedIds.length || ''}</span></button>
+        <button type="button" className={tab === 'picks' ? 'active' : ''} onClick={() => setTab('picks')}>Picks & swaps <span>{selectedAssets.length || ''}</span></button>
+      </div>
+      {data.loading ? <div className="trade-panel-state">Loading roster and contracts…</div> : data.error ? <div className="trade-panel-state error">{data.error}</div> : tab === 'players' ? (
         <div className="trade-player-list">
           {data.players.map((player) => (
-            <TradePlayerRow key={player.id} player={player} contract={data.contracts[player.id]} selected={selectedIds.includes(player.id)} onToggle={onToggle} />
+            <TradePlayerRow key={player.id} player={player} contract={data.contracts[player.id]} selected={selectedIds.includes(player.id)} onToggle={onTogglePlayer} />
           ))}
+        </div>
+      ) : (
+        <div className="trade-player-list trade-pick-list">
+          <div className="trade-pick-note">Future own-pick slots are available now so the machine is usable. Existing ownership/protection obligations are not yet verified league-wide, so those checks return <strong>Needs review</strong> rather than a fake pass.</div>
+          {draftAssets.map((asset) => <TradePickRow key={asset.id} asset={asset} selected={selectedAssets.some((item) => item.id === asset.id)} onToggle={onToggleAsset} />)}
         </div>
       )}
     </section>
+  )
+}
+
+function TradeAssetSummary({ team, players, assets, salary, onProtectionChange }) {
+  return (
+    <div className="trade-flow-block">
+      <span>{team.abbr} sends</span>
+      <strong>{players.length ? players.map(fullName).join(', ') : assets.length ? 'Draft assets only' : 'Pick players or picks'}</strong>
+      {assets.length ? <div className="trade-flow-assets">
+        {assets.map((asset) => (
+          <div className="trade-flow-asset" key={asset.id}>
+            <div><b>{asset.label}</b><small>{asset.kind === 'swap' ? 'Swap' : asset.round === 1 ? '1st round' : '2nd round'}</small></div>
+            {asset.kind === 'pick' && asset.round === 1 ? (
+              <select aria-label={`Protection for ${asset.label}`} value={asset.protection} onChange={(event) => onProtectionChange(asset.id, event.target.value)}>
+                {PICK_PROTECTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+              </select>
+            ) : null}
+          </div>
+        ))}
+      </div> : null}
+      <small>{players.length ? money(salary, true) : '$0 salary'}</small>
+    </div>
+  )
+}
+
+function TradeResultBadge({ status }) {
+  const label = status === 'pass' ? 'Trade works' : status === 'fail' ? 'Trade fails' : status === 'review' ? 'Needs review' : 'Build the trade'
+  return <div className={`trade-result-badge ${status || 'idle'}`}><span>{status === 'pass' ? '✓' : status === 'fail' ? '×' : status === 'review' ? '!' : '•'}</span><strong>{label}</strong></div>
+}
+
+function TradeValidationResult({ result }) {
+  if (!result) return null
+  return (
+    <div className={`trade-team-result ${result.status}`}>
+      <div className="trade-team-result-head">
+        <TeamLogo team={result.team} />
+        <div><span>{result.team.abbr}</span><strong>{result.method}</strong></div>
+        <em>{result.status === 'pass' ? 'PASS' : result.status === 'fail' ? 'FAIL' : 'REVIEW'}</em>
+      </div>
+      <div className="trade-rule-list">
+        {result.lines.map((item) => (
+          <div className={`trade-rule-line ${item.status}`} key={item.code}>
+            <span className="trade-rule-icon">{item.status === 'pass' ? '✓' : item.status === 'fail' ? '×' : '!'}</span>
+            <div><strong>{item.title}</strong><p>{item.detail}</p></div>
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }
 
@@ -672,10 +751,16 @@ function TradeMachinePage() {
   const [teamData, setTeamData] = useState({})
   const [selectedA, setSelectedA] = useState([])
   const [selectedB, setSelectedB] = useState([])
+  const [assetsA, setAssetsA] = useState([])
+  const [assetsB, setAssetsB] = useState([])
+  const [tradeResult, setTradeResult] = useState(null)
 
   useEffect(() => {
     setSelectedA([])
     setSelectedB([])
+    setAssetsA([])
+    setAssetsB([])
+    setTradeResult(null)
   }, [primaryTeam?.abbr, opponentAbbr])
 
   useEffect(() => {
@@ -744,18 +829,48 @@ function TradeMachinePage() {
   const activeB = Number(dataB.teamCap?.activeRoster || dataB.teamCap?.totalCap || 0)
   const projectedA = activeA > 0 ? activeA - salaryA + salaryB : null
   const projectedB = activeB > 0 ? activeB - salaryB + salaryA : null
-  const CAP = { cap: 164961000, tax: 200428000, firstApron: 209015000, secondApron: 221686000 }
-  const dealReady = selectedA.length > 0 && selectedB.length > 0
+  const hasAssets = selectedA.length + selectedB.length + assetsA.length + assetsB.length > 0
+  const dealReady = (selectedA.length + assetsA.length > 0) && (selectedB.length + assetsB.length > 0)
   const cleanSalaryData = missingA === 0 && missingB === 0
 
-  const toggle = (setter) => (id) => setter((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id])
-  const thresholdLabel = (value) => {
-    if (!Number.isFinite(value)) return 'Team total unavailable'
-    if (value > CAP.secondApron) return 'Above 2nd apron'
-    if (value > CAP.firstApron) return 'Above 1st apron'
-    if (value > CAP.tax) return 'Above tax'
-    if (value > CAP.cap) return 'Above cap'
-    return 'Below cap'
+  const invalidate = () => setTradeResult(null)
+  const toggle = (setter) => (id) => { invalidate(); setter((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id]) }
+  const toggleAsset = (setter, team) => (id) => {
+    invalidate()
+    const available = ownDraftAssets(team)
+    const asset = available.find((item) => item.id === id)
+    if (!asset) return
+    setter((current) => current.some((item) => item.id === id) ? current.filter((item) => item.id !== id) : [...current, asset])
+  }
+  const updateProtection = (setter) => (id, protection) => { invalidate(); setter((current) => current.map((asset) => asset.id === id ? { ...asset, protection } : asset)) }
+
+  const tryTrade = () => {
+    if (!dealReady) return
+    if (!cleanSalaryData) {
+      setTradeResult({ status: 'review', error: 'One or more selected players is missing a usable 2026-27 salary. NBACAB will not validate the deal until those salaries are available.', teams: [] })
+      return
+    }
+    const resultA = validateTradeTeam({
+      team: primaryTeam,
+      preSalary: activeA > 0 ? activeA : null,
+      outgoingSalary: salaryA,
+      incomingSalary: salaryB,
+      outgoingPlayerCount: selectedPlayersA.length,
+      incomingPlayerCount: selectedPlayersB.length,
+      rosterCount: dataA.players.length,
+      outgoingAssets: assetsA,
+    })
+    const resultB = validateTradeTeam({
+      team: opponentTeam,
+      preSalary: activeB > 0 ? activeB : null,
+      outgoingSalary: salaryB,
+      incomingSalary: salaryA,
+      outgoingPlayerCount: selectedPlayersB.length,
+      incomingPlayerCount: selectedPlayersA.length,
+      rosterCount: dataB.players.length,
+      outgoingAssets: assetsB,
+    })
+    setTradeResult({ status: overallTradeStatus([resultA, resultB]), teams: [resultA, resultB] })
   }
 
   return (
@@ -763,14 +878,14 @@ function TradeMachinePage() {
       <div className="trade-page">
         <div className="trade-topbar">
           <Link to={`/team/${primaryTeam.abbr.toLowerCase()}`} className="back-link">← {primaryTeam.name}</Link>
-          <button type="button" className="trade-reset-button" onClick={() => { setSelectedA([]); setSelectedB([]) }} disabled={!selectedA.length && !selectedB.length}>Clear trade</button>
+          <button type="button" className="trade-reset-button" onClick={() => { setSelectedA([]); setSelectedB([]); setAssetsA([]); setAssetsB([]); setTradeResult(null) }} disabled={!hasAssets}>Clear trade</button>
         </div>
 
         <section className="trade-hero">
           <div>
             <span className="eyebrow">Trade machine · 2026-27</span>
             <h1>Move pieces. See what changes.</h1>
-            <p>Choose players on both sides. NBACAB keeps the rosters, contracts and team money connected while you build the deal.</p>
+            <p>Players, picks, protections and the CBA in one deal. Build it first, then run the trade check when you are ready.</p>
           </div>
           <label className="trade-opponent-picker">
             <span>Trade with</span>
@@ -781,39 +896,44 @@ function TradeMachinePage() {
         </section>
 
         <div className="trade-workspace">
-          <TradeTeamPanel team={primaryTeam} data={dataA} selectedIds={selectedA} onToggle={toggle(setSelectedA)} sideLabel="Team A" />
+          <TradeTeamPanel team={primaryTeam} data={dataA} selectedIds={selectedA} onTogglePlayer={toggle(setSelectedA)} selectedAssets={assetsA} onToggleAsset={toggleAsset(setAssetsA, primaryTeam)} sideLabel="Team A" />
 
           <aside className="trade-deal-panel" aria-live="polite">
             <div className="trade-deal-kicker">THE DEAL</div>
-            <div className="trade-flow-block">
-              <span>{primaryTeam.abbr} sends</span>
-              <strong>{selectedPlayersA.length ? selectedPlayersA.map(fullName).join(', ') : 'Pick players'}</strong>
-              <small>{selectedA.length ? money(salaryA, true) : '$0'}</small>
-            </div>
+            <TradeAssetSummary team={primaryTeam} players={selectedPlayersA} assets={assetsA} salary={salaryA} onProtectionChange={updateProtection(setAssetsA)} />
             <div className="trade-flow-arrow"><span>⇄</span></div>
-            <div className="trade-flow-block">
-              <span>{opponentTeam.abbr} sends</span>
-              <strong>{selectedPlayersB.length ? selectedPlayersB.map(fullName).join(', ') : 'Pick players'}</strong>
-              <small>{selectedB.length ? money(salaryB, true) : '$0'}</small>
-            </div>
+            <TradeAssetSummary team={opponentTeam} players={selectedPlayersB} assets={assetsB} salary={salaryB} onProtectionChange={updateProtection(setAssetsB)} />
 
             <div className={`trade-analysis-card ${dealReady ? 'active' : ''}`}>
               <div className="trade-analysis-title">
                 <span className="trade-analysis-dot" />
-                <div><span>Trade analysis</span><strong>{!dealReady ? 'Build both sides' : !cleanSalaryData ? 'Needs salary data' : 'Ready for CBA review'}</strong></div>
+                <div><span>Trade analysis</span><strong>{!dealReady ? 'Build both sides' : tradeResult ? (tradeResult.status === 'pass' ? 'Validated' : tradeResult.status === 'fail' ? 'Rule violation found' : 'Review needed') : 'Ready to test'}</strong></div>
               </div>
               <div className="trade-analysis-lines">
                 <div><span>{primaryTeam.abbr} money change</span><strong>{dealReady ? `${salaryB >= salaryA ? '+' : '−'}${money(Math.abs(salaryB - salaryA), true)}` : '—'}</strong></div>
                 <div><span>{opponentTeam.abbr} money change</span><strong>{dealReady ? `${salaryA >= salaryB ? '+' : '−'}${money(Math.abs(salaryA - salaryB), true)}` : '—'}</strong></div>
-                <div><span>{primaryTeam.abbr} after trade</span><strong>{projectedA ? `${money(projectedA, true)} · ${thresholdLabel(projectedA)}` : 'Team total unavailable'}</strong></div>
-                <div><span>{opponentTeam.abbr} after trade</span><strong>{projectedB ? `${money(projectedB, true)} · ${thresholdLabel(projectedB)}` : 'Team total unavailable'}</strong></div>
+                <div><span>{primaryTeam.abbr} after trade</span><strong>{projectedA ? `${money(projectedA, true)} · ${apronLabel(projectedA)}` : 'Team total unavailable'}</strong></div>
+                <div><span>{opponentTeam.abbr} after trade</span><strong>{projectedB ? `${money(projectedB, true)} · ${apronLabel(projectedB)}` : 'Team total unavailable'}</strong></div>
+                <div><span>Draft assets</span><strong>{assetsA.length + assetsB.length ? `${assetsA.length + assetsB.length} included` : 'None'}</strong></div>
               </div>
-              <p>{!dealReady ? 'Select at least one player from each team to analyze the shape of the deal.' : !cleanSalaryData ? 'One or more selected players is missing a usable current salary, so NBACAB will not pretend the trade can be validated.' : 'Salary movement is calculated from current contract data. Full CBA legality — including apron-specific matching, aggregation and transaction restrictions — is not claimed in this first trade build.'}</p>
+              <button type="button" className="trade-try-button" disabled={!dealReady} onClick={tryTrade}>{tradeResult ? 'Run trade again' : 'Try trade'} <span>→</span></button>
+              {!dealReady ? <p>Select something from each side first — players, picks or swaps.</p> : !cleanSalaryData ? <p>One or more selected players is missing usable salary data. The trade can be built, but CBA validation will return Needs review.</p> : <p>Checks 2026-27 salary matching, first/second-apron restrictions, aggregation, roster count, Stepien timing and pick-protection rules. Ownership-dependent pick and contract restrictions are surfaced as review items instead of guessed.</p>}
             </div>
+
+            {tradeResult ? <div className="trade-validation">
+              <TradeResultBadge status={tradeResult.status} />
+              {tradeResult.error ? <div className="trade-validation-error">{tradeResult.error}</div> : tradeResult.teams.map((result) => <TradeValidationResult key={result.team.abbr} result={result} />)}
+            </div> : null}
           </aside>
 
-          <TradeTeamPanel team={opponentTeam} data={dataB} selectedIds={selectedB} onToggle={toggle(setSelectedB)} sideLabel="Team B" />
+          <TradeTeamPanel team={opponentTeam} data={dataB} selectedIds={selectedB} onTogglePlayer={toggle(setSelectedB)} selectedAssets={assetsB} onToggleAsset={toggleAsset(setAssetsB, opponentTeam)} sideLabel="Team B" />
         </div>
+
+        <section className="trade-rules-footnote">
+          <strong>What V19 validates</strong>
+          <p>The validator uses the NBA’s 2026-27 cap/tax/apron thresholds and the current CBA traded-player-exception/apron framework. Draft ownership is intentionally conservative: future own-pick slots and swaps are usable, but NBACAB marks ownership-dependent questions for review until a verified league-wide pick ledger is added.</p>
+          <div><span>Cap {money(CBA_2026_27.salaryCap, true)}</span><span>Tax {money(CBA_2026_27.tax, true)}</span><span>1st apron {money(CBA_2026_27.firstApron, true)}</span><span>2nd apron {money(CBA_2026_27.secondApron, true)}</span></div>
+        </section>
       </div>
     </AppShell>
   )

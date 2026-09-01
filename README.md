@@ -82,3 +82,28 @@ The emergency override list is not intended to become a manually curated roster 
 - Adds lineup source, season and confidence/source-agreement messaging.
 - Saved user lineups remain untouched and continue to override projected lineup ordering on that device.
 - Reset Expected now returns to the latest projected depth chart instead of the old provisional algorithm whenever the feed is available.
+
+## V19 — Trade Machine CBA + Picks
+
+V19 builds on the V18 trade workspace and adds an explicit **Try trade** workflow. A proposal is editable until the user runs validation; changing any player, pick, swap or protection clears the previous result.
+
+### CBA validation implemented
+- 2026-27 NBA thresholds: $164.961M salary cap, $200.428M tax, $209.015M first apron, $221.686M second apron.
+- Cap-room, Expanded TPE, Standard/Aggregated Standard TPE paths.
+- First-apron and second-apron salary-matching behavior.
+- Second-apron salary aggregation review/failure logic.
+- Post-trade roster-count checks.
+- Team-by-team result cards with Pass / Fail / Needs review and plain-English reasons.
+
+### Picks and swaps implemented
+- Players / Picks & swaps tabs for both teams.
+- 2027-2033 firsts, seconds and first-round swap slots.
+- First-round protection selector.
+- Stepien consecutive-future-first check for the proposal.
+- 2027+ newly traded pick-protection guardrails for top-12 through top-15 protections (those options are intentionally not offered in the normal selector).
+- Second-apron farthest-future/frozen-pick review flag.
+
+### Important data-quality boundary
+NBACAB does not yet have a verified league-wide historical draft-rights ledger. Future own-pick slots and swap slots are therefore intentionally labeled as ownership-unverified. The proposal can still be built and Stepien-tested, but ownership-dependent questions return **Needs review** rather than a fabricated pass. The next pick-data phase should replace these generated slots with verified ownership, protections, conveyance chains and prior obligations.
+
+The CBA engine similarly validates the rules supported by current roster/contract/team-cap inputs, while contract-specific restrictions that require facts not currently stored (for example sign-and-trade status or certain recently-signed/acquired-player restrictions) should be added as contract metadata rather than guessed.
