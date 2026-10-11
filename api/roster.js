@@ -18,6 +18,10 @@ const TEAM_NAMES = {
 // Emergency, source-backed overrides protect NBACAB when a structured roster feed lags.
 // They are intentionally tiny and should be removed once BDL/ESPN both reflect the move.
 const VERIFIED_OVERRIDES = [
+  // NBA official September 2026 completed trade; protects against lagging roster APIs.
+  { player: 'Kawhi Leonard', from: 'LAC', to: 'TOR', effective: '2026-09-14', source: 'NBA.com', sourceUrl: 'https://www.nba.com/news/raptors-clippers-kawhi-leonard-trade', reason: 'Official completed Toronto/LA trade.' },
+  { player: 'Brandon Ingram', from: 'TOR', to: 'LAC', effective: '2026-09-14', source: 'NBA.com', sourceUrl: 'https://www.nba.com/news/raptors-clippers-kawhi-leonard-trade', reason: 'Official completed Toronto/LA trade.' },
+  { player: 'Gradey Dick', from: 'TOR', to: 'LAC', effective: '2026-09-14', source: 'NBA.com', sourceUrl: 'https://www.nba.com/news/raptors-clippers-kawhi-leonard-trade', reason: 'Official completed Toronto/LA trade.' },
   {
     player: 'Jonathan Kuminga', from: 'ATL', to: 'MIN', effective: '2026-08-26',
     source: 'NBA.com', sourceUrl: 'https://www.nba.com/news/jonathan-kuminga-wolves-free-agency',
@@ -207,7 +211,7 @@ async function searchBdlPlayer(name, apiKey) {
     })
     const candidates = Array.isArray(payload?.data) ? payload.data : []
     const exact = candidates.find((player) => normalizeName(`${player.first_name || ''} ${player.last_name || ''}`) === normalizeName(name))
-    return exact || candidates[0] || null
+    return exact || null
   } catch (error) {
     console.warn(`NBACAB BDL player search failed for ${name}:`, error)
     return null
@@ -269,8 +273,13 @@ export default async function handler(req, res) {
     const removed = basePlayers.filter((player) => departureKeys.has(normalizeName(`${player.first_name || ''} ${player.last_name || ''}`)))
       .map((player) => `${player.first_name || ''} ${player.last_name || ''}`.trim())
 
+    const espnRosterNamesForRecovery = espnAthletes.map((athlete) => cleanText(athlete.displayName || athlete.fullName || athlete.shortName)).filter(Boolean)
+    // ESPN roster-only names are corroborating evidence, not automatically trusted identities.
+    // Recover them only through exact BALLDONTLIE player-name matching.
+    const espnCandidates = espnRosterNamesForRecovery.filter((name) => !departureKeys.has(normalizeName(name)))
+    const recoveryNames = uniqueNames([...additions, ...espnCandidates])
     const currentKeys = new Set(players.map((player) => normalizeName(`${player.first_name || ''} ${player.last_name || ''}`)))
-    const missingAdditions = additions.filter((name) => !currentKeys.has(normalizeName(name)))
+    const missingAdditions = recoveryNames.filter((name) => !currentKeys.has(normalizeName(name)) && !departureKeys.has(normalizeName(name)))
     const foundAdditions = await Promise.all(missingAdditions.map((name) => searchBdlPlayer(name, apiKey)))
     const added = []
     for (let i = 0; i < missingAdditions.length; i += 1) {
@@ -299,7 +308,7 @@ export default async function handler(req, res) {
         ...player,
         image_url: espnHeadshotUrl(athlete),
         espn_id: athlete?.id || null,
-        nbacab_roster_source: player.nbacab_roster_override ? 'NBA transaction override' : 'BALLDONTLIE',
+        nbacab_roster_source: player.nbacab_roster_override ? (additions.some((name) => normalizeName(name) === key) ? 'NBA transaction override' : 'ESPN corroborated / BALLDONTLIE identity') : 'BALLDONTLIE',
         nbacab_espn_confirmed: espnNames.has(key),
         nbacab_transaction_confirmed: transactionAdded,
       }
@@ -335,7 +344,8 @@ export default async function handler(req, res) {
         departuresRequested: departures,
         additionsApplied: added,
         departuresApplied: removed,
-        unresolvedAdditions: missingAdditions.filter((name) => !added.some((x) => normalizeName(x) === normalizeName(name))),
+        unresolvedAdditions: additions.filter((name) => !reconciledKeys.has(normalizeName(name))),
+        espnRecovered: added.filter((name) => !additions.some((candidate) => normalizeName(candidate) === normalizeName(name))),
         espnOnly,
         bdlOnly,
         overrides: emergency.details,
