@@ -225,12 +225,55 @@ export default async function handler(req, res) {
     })
   }
 
-  const primary = realgm || espn || rotowire
-  const primaryName = realgm ? 'RealGM' : espn ? 'ESPN' : 'RotoWire'
-  const secondary = realgm ? (espn || rotowire) : (espn && rotowire ? rotowire : null)
-  const secondaryName = realgm && espn ? 'ESPN' : realgm && rotowire ? 'RotoWire' : espn && rotowire ? 'RotoWire' : null
-  const validation = buildValidation(primary, secondary, secondaryName || 'secondary source')
+  const providers = [
+    { name: 'RealGM', data: realgm },
+    { name: 'ESPN', data: espn },
+    { name: 'RotoWire', data: rotowire },
+  ].filter((entry) => entry.data)
+  const primary = providers[0].data
+  const chart = blankChart()
+  const starters = {}
+  const conflicts = []
+  let agreementPositions = 0
+  let checked = 0
+  const positionDecisions = {}
+  for (const position of POSITIONS) {
+    const votes = providers.filter((entry) => entry.data.starters?.[position]).map((entry) => ({ name: entry.name, player: entry.data.starters[position] }))
+    const groups = []
+    for (const vote of votes) {
+      const existing = groups.find((g) => namesLikelyMatch(g.player, vote.player))
+      if (existing) existing.voters.push(vote.name)
+      else groups.push({ player: vote.player, voters: [vote.name] })
+    }
+    groups.sort((a, b) => b.voters.length - a.voters.length || providers.findIndex((p) => p.name === a.voters[0]) - providers.findIndex((p) => p.name === b.voters[0]))
+    const winner = groups[0]
+    if (votes.length >= 2) checked += 1
+    if (winner?.voters.length >= 2) agreementPositions += 1
+    if (groups.length > 1) conflicts.push({ position, candidates: groups.map((g) => ({ player: g.player, sources: g.voters })) })
+    const selected = winner?.player || null
+    starters[position] = selected
+    positionDecisions[position] = { selected, sources: winner?.voters || [], votes: votes.length, consensus: (winner?.voters.length || 0) >= 2 }
+    const seen = new Set()
+    if (selected) { chart[position].push(selected); seen.add(norm(selected)) }
+    for (const provider of providers) {
+      for (const name of provider.data.chart?.[position] || []) {
+        if (!name || seen.has(norm(name))) continue
+        // Avoid installing conflicting projected starters above a source's own rotation players.
+        chart[position].push(name)
+        seen.add(norm(name))
+      }
+    }
+  }
+  const validation = {
+    confidence: checked >= 4 && agreementPositions >= 4 ? 'high' : checked >= 3 && agreementPositions >= 2 ? 'medium' : 'low',
+    agreements: agreementPositions,
+    checked,
+    conflicts,
+    positionDecisions,
+    note: 'Starter selected by cross-source majority at each position; unresolved ties prefer RealGM, then ESPN, then RotoWire. Only candidates present on the reconciled roster display.',
+  }
   const season = seasonStart()
+  const primaryName = providers.length > 1 ? `Consensus (${providers.map((p) => p.name).join(', ')})` : providers[0].name
 
   res.setHeader('Cache-Control', 's-maxage=1800, stale-while-revalidate=7200')
   return res.status(200).json({
@@ -239,8 +282,8 @@ export default async function handler(req, res) {
     season,
     seasonLabel: `${season}-${String(season + 1).slice(-2)}`,
     provider: primaryName,
-    chart: primary.chart,
-    starters: primary.starters,
+    chart,
+    starters,
     validation,
     sources: {
       realgm: { ok: Boolean(realgm), url: REALGM_URL },
