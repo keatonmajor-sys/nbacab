@@ -2,7 +2,8 @@ import * as cheerio from 'cheerio'
 
 const REALGM_URL = 'https://basketball.realgm.com/nba/depth-charts'
 const ESPN_DEPTH_URL = 'https://www.espn.com/nba/depth'
-const ROTOWIRE_URL = 'https://www.rotowire.com/basketball/nba-depth-charts.php'
+const ROTOWIRE_URL = 'https://www.rotowire.com/basketball/nba-depth-charts/'
+const CBS_BASE_URL = 'https://www.cbssports.com/nba/teams/'
 
 const TEAM_NAMES = {
   ATL: 'Atlanta Hawks', BOS: 'Boston Celtics', BKN: 'Brooklyn Nets', CHA: 'Charlotte Hornets',
@@ -19,6 +20,7 @@ const ESPN_TEAM_LABELS = {
   ATL:'Atlanta', BOS:'Boston', BKN:'Brooklyn', CHA:'Charlotte', CHI:'Chicago', CLE:'Cleveland', DAL:'Dallas', DEN:'Denver', DET:'Detroit', GSW:'Golden State', HOU:'Houston', IND:'Indiana', LAC:'LA Clippers', LAL:'LA Lakers', MEM:'Memphis', MIA:'Miami', MIL:'Milwaukee', MIN:'Minnesota', NOP:'New Orleans', NYK:'New York', OKC:'Oklahoma City', ORL:'Orlando', PHI:'Philadelphia', PHX:'Phoenix', POR:'Portland', SAC:'Sacramento', SAS:'San Antonio', TOR:'Toronto', UTA:'Utah', WAS:'Washington'
 }
 
+const TEAM_SLUGS = Object.fromEntries(Object.entries(TEAM_NAMES).map(([abbr, full]) => [abbr, full.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')]))
 function clean(value = '') { return String(value).replace(/\s+/g, ' ').trim() }
 function norm(value = '') {
   return clean(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '')
@@ -100,38 +102,101 @@ function parseRealGM(html, teamName) {
   return { chart, starters: starters || Object.fromEntries(POSITIONS.map((p) => [p, chart[p][0] || null])) }
 }
 
+function isName(value) {
+  const v = clean(value).replace(/\s*\((?:IL|O|DD|Q|D|GTD)\)\s*$/i, '')
+  return /[a-z]/i.test(v) && !/^(?:starter|second|third|\d+(?:st|nd|rd|th)|out|questionable|game time decision|\-|—)$/i.test(v) && v.length <= 60
+}
+function sanitizedPlayer(cell, $) {
+  const clone = $(cell).clone()
+  clone.find('small,button,svg,script,style,.injury,.player-news,.news,.status').remove()
+  const links = clone.find('a').filter((_, link) => /\/player\/|\/players\/|\/id\//i.test($(link).attr('href') || ''))
+  const text = clean(links.first().text() || clone.find('a').first().text() || clone.text())
+  return text.replace(/\s*\((?:IL|O|DD|Q|D|GTD)\)\s*$/i, '').trim()
+}
 function parseESPN(html, teamAbbr) {
   const $ = cheerio.load(html)
   const wanted = norm(ESPN_TEAM_LABELS[teamAbbr] || TEAM_NAMES[teamAbbr])
-  let result = null
-  $('table').each((_, table) => {
-    if (result) return
+  // /nba/depth: one team per row, with position columns.
+  for (const table of $('table').toArray()) {
     const rows = $(table).find('tr').toArray()
-    if (!rows.length) return
-    const headers = $(rows[0]).find('th,td').map((__, c) => clean($(c).text()).toUpperCase()).get()
-    const indices = Object.fromEntries(POSITIONS.map((p) => [p, headers.indexOf(p)]))
-    if (POSITIONS.filter((p) => indices[p] >= 0).length < 5) return
-    for (const row of rows.slice(1)) {
-      const cells = $(row).find('th,td').toArray()
-      if (!cells.length) continue
-      const teamCell = clean($(cells[0]).text())
-      if (!teamCell || !(norm(teamCell).includes(wanted) || wanted.includes(norm(teamCell)))) continue
-      const starters = {}
-      for (const p of POSITIONS) {
-        const idx = indices[p]
-        if (idx < 0 || !cells[idx]) continue
-        const name = playerText(cells[idx], $).replace(/\s*\(IL\)\s*$/i, '').trim()
-        if (name) starters[p] = name
-      }
-      if (Object.keys(starters).length >= 4) {
+    if (!rows.length) continue
+    const headers = $(rows[0]).find('th,td').map((_, c) => clean($(c).text()).toUpperCase()).get()
+    const ix = Object.fromEntries(POSITIONS.map((p) => [p, headers.indexOf(p)]))
+    if (POSITIONS.filter((p) => ix[p] >= 0).length === 5) {
+      for (const row of rows.slice(1)) {
+        const cells = $(row).find('th,td').toArray()
+        if (!cells.length) continue
+        const teamCell = clean($(cells[0]).text())
+        if (!teamCell || !(norm(teamCell) === wanted || wanted.includes(norm(teamCell)) || norm(teamCell).includes(wanted))) continue
         const chart = blankChart()
-        POSITIONS.forEach((p) => { if (starters[p]) chart[p].push(starters[p]) })
-        result = { chart, starters }
-        break
+        for (const position of POSITIONS) {
+          const cell = cells[ix[position]]
+          if (!cell) continue
+          const candidate = sanitizedPlayer(cell, $)
+          if (isName(candidate)) chart[position].push(candidate)
+        }
+        if (POSITIONS.every((p) => chart[p].length)) return { chart, starters: Object.fromEntries(POSITIONS.map((p) => [p, chart[p][0]])) }
+      }
+    }
+  }
+  // /nba/team/depth/_/name/lal: rows are positions, columns are Starter/2nd/3rd.
+  for (const table of $('table').toArray()) {
+    const rows = $(table).find('tr').toArray()
+    const chart = blankChart()
+    for (const row of rows) {
+      const cells = $(row).find('th,td').toArray()
+      const pos = clean($(cells[0]).text()).toUpperCase()
+      if (!POSITIONS.includes(pos)) continue
+      for (const cell of cells.slice(1)) {
+        const name = sanitizedPlayer(cell, $)
+        if (isName(name)) chart[pos].push(name)
+      }
+    }
+    if (POSITIONS.every((p) => chart[p].length)) return { chart, starters: Object.fromEntries(POSITIONS.map((p) => [p, chart[p][0]])) }
+  }
+  // ESPN sometimes renders a single table with position labels in a separate thead.
+  const labels = $('table').find('thead tr').first().find('th').map((_, el) => clean($(el).text()).toUpperCase()).get()
+  if (POSITIONS.every((p) => labels.includes(p))) {
+    const table = $('table').filter((_, el) => $(el).find('thead th').length >= 5).first()
+    const rows = table.find('tbody tr').toArray()
+    const chart = blankChart()
+    for (const row of rows) {
+      const cells = $(row).find('td,th').toArray()
+      POSITIONS.forEach((pos, i) => {
+        const cell = cells[labels.indexOf(pos)]
+        if (cell) { const name = sanitizedPlayer(cell, $); if (isName(name)) chart[pos].push(name) }
+      })
+    }
+    if (POSITIONS.every((p) => chart[p].length)) return { chart, starters: Object.fromEntries(POSITIONS.map((p) => [p, chart[p][0]])) }
+  }
+  return null
+}
+function parseCBS(html) {
+  const $ = cheerio.load(html)
+  const chart = blankChart()
+  const positionNames = { 'POINT GUARD':'PG', 'SHOOTING GUARD':'SG', 'SMALL FORWARD':'SF', 'POWER FORWARD':'PF', 'CENTER':'C', PG:'PG', SG:'SG', SF:'SF', PF:'PF', C:'C' }
+  // CBS presents each position as a row: POSITION | STARTER | SECOND | THIRD+.
+  $('table tr').each((_, row) => {
+    const cells = $(row).children('td,th').toArray()
+    if (cells.length < 2) return
+    const label = clean($(cells[0]).text()).toUpperCase()
+    const pos = positionNames[label]
+    if (!pos) return
+    for (const cell of cells.slice(1)) {
+      const links = $(cell).find('a[href*="/nba/players/"]')
+      if (links.length) {
+        links.each((__, link) => {
+          const labelText = clean($(link).attr('title') || $(link).find('[class*="name"]').first().text() || $(link).text())
+          const name = labelText.replace(/^(?:[A-Z]\.\s*)?(?=[A-Z])/,'').trim()
+          if (isName(name) && !chart[pos].some((n) => norm(n) === norm(name))) chart[pos].push(name)
+        })
+      } else {
+        const name = sanitizedPlayer(cell, $)
+        if (isName(name) && !chart[pos].some((n) => norm(n) === norm(name))) chart[pos].push(name)
       }
     }
   })
-  return result
+  return POSITIONS.every((p) => chart[p].length) ? { chart, starters: Object.fromEntries(POSITIONS.map((p) => [p, chart[p][0]])) } : null
 }
 
 // RotoWire's markup changes periodically, so this parser is deliberately defensive.
@@ -208,27 +273,31 @@ export default async function handler(req, res) {
   const teamName = TEAM_NAMES[teamAbbr]
   if (!teamName) return res.status(400).json({ error: 'A valid NBA teamAbbr is required.' })
 
-  const [realgmResult, espnResult, rotowireResult] = await Promise.allSettled([fetchHtml(REALGM_URL), fetchHtml(ESPN_DEPTH_URL), fetchHtml(ROTOWIRE_URL)])
-  const realgm = realgmResult.status === 'fulfilled' ? parseRealGM(realgmResult.value, teamName) : null
-  const espn = espnResult.status === 'fulfilled' ? parseESPN(espnResult.value, teamAbbr) : null
-  const rotowire = rotowireResult.status === 'fulfilled' ? parseRotoWire(rotowireResult.value, teamName, teamAbbr) : null
-
-  if (!realgm && !espn && !rotowire) {
-    res.setHeader('Cache-Control', 's-maxage=600, stale-while-revalidate=1800')
-    return res.status(502).json({
-      error: 'Projected depth-chart sources are temporarily unavailable.',
-      sources: {
-        realgm: { ok: false, error: realgmResult.status === 'rejected' ? realgmResult.reason?.message : 'Unable to parse team depth chart.' },
-        espn: { ok: false, error: espnResult.status === 'rejected' ? espnResult.reason?.message : 'Unable to parse team depth chart.' },
-        rotowire: { ok: false, error: rotowireResult.status === 'rejected' ? rotowireResult.reason?.message : 'Unable to parse team depth chart.' },
-      },
-    })
+  const espnTeamUrl = `https://www.espn.com/nba/team/depth/_/name/${teamAbbr.toLowerCase()}`
+  const cbsUrl = `${CBS_BASE_URL}${teamAbbr}/${TEAM_SLUGS[teamAbbr]}/depth-chart/`
+  const urls = { realgm: REALGM_URL, espn: espnTeamUrl, espnLeague: ESPN_DEPTH_URL, rotowire: ROTOWIRE_URL, cbs: cbsUrl }
+  const entries = await Promise.allSettled(Object.values(urls).map((url) => fetchHtml(url)))
+  const responses = Object.fromEntries(Object.keys(urls).map((name, i) => [name, entries[i]]))
+  const html = (name) => responses[name].status === 'fulfilled' ? responses[name].value : ''
+  const realgm = html('realgm') ? parseRealGM(html('realgm'), teamName) : null
+  const espn = (html('espn') ? parseESPN(html('espn'), teamAbbr) : null) || (html('espnLeague') ? parseESPN(html('espnLeague'), teamAbbr) : null)
+  const rotowire = html('rotowire') ? parseRotoWire(html('rotowire'), teamName, teamAbbr) : null
+  const cbs = html('cbs') ? parseCBS(html('cbs')) : null
+  const sources = Object.fromEntries(['realgm', 'espn', 'rotowire', 'cbs'].map((name) => {
+    const parsed = { realgm, espn, rotowire, cbs }[name]
+    const response = responses[name]
+    return [name, { ok: Boolean(parsed), url: urls[name], ...(!parsed ? { error: response.status === 'rejected' ? String(response.reason?.message || 'Request failed') : 'Unable to parse complete depth chart.' } : {}) }]
+  }))
+  if (!realgm && !espn && !rotowire && !cbs) {
+    res.setHeader('Cache-Control', 's-maxage=120, stale-while-revalidate=120')
+    return res.status(502).json({ error: 'Projected depth-chart sources are temporarily unavailable.', sources })
   }
 
   const providers = [
-    { name: 'RealGM', data: realgm },
+    { name: 'CBS Sports', data: cbs },
     { name: 'ESPN', data: espn },
     { name: 'RotoWire', data: rotowire },
+    { name: 'RealGM', data: realgm },
   ].filter((entry) => entry.data)
   const primary = providers[0].data
   const chart = blankChart()
@@ -270,7 +339,7 @@ export default async function handler(req, res) {
     checked,
     conflicts,
     positionDecisions,
-    note: 'Starter selected by cross-source majority at each position; unresolved ties prefer RealGM, then ESPN, then RotoWire. Only candidates present on the reconciled roster display.',
+    note: 'Starter selected by cross-source majority at each position; unresolved ties prefer CBS Sports, then ESPN, RotoWire, then RealGM. Only candidates present on the reconciled roster display.',
   }
   const season = seasonStart()
   const primaryName = providers.length > 1 ? `Consensus (${providers.map((p) => p.name).join(', ')})` : providers[0].name
@@ -285,11 +354,7 @@ export default async function handler(req, res) {
     chart,
     starters,
     validation,
-    sources: {
-      realgm: { ok: Boolean(realgm), url: REALGM_URL },
-      espn: { ok: Boolean(espn), url: ESPN_DEPTH_URL },
-      rotowire: { ok: Boolean(rotowire), url: ROTOWIRE_URL },
-    },
+    sources,
     verifiedAt: new Date().toISOString(),
   })
 }
