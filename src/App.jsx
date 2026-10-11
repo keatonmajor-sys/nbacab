@@ -33,7 +33,7 @@ function money(value, compact = false) {
 }
 
 function storageKey(teamAbbr) {
-  return `nbacab-depth-chart-v1:${teamAbbr}`
+  return `nbacab-depth-chart-v2-explicit:${teamAbbr}`
 }
 
 function AppShell({ children }) {
@@ -1159,6 +1159,7 @@ function TeamPage() {
   const [depthChart, setDepthChart] = useState(() => Object.fromEntries(POSITION_ORDER.map((position) => [position, []])))
   const editMode = true
   const [customLineup, setCustomLineup] = useState(false)
+  const [lineupSaved, setLineupSaved] = useState(false)
   const [movePlayerTarget, setMovePlayerTarget] = useState(null)
   const [draggingPlayerId, setDraggingPlayerId] = useState(null)
   const [mobileStatKey, setMobileStatKey] = useState('pts')
@@ -1174,16 +1175,25 @@ function TeamPage() {
     if (saved) {
       setDepthChart(hydrateDepthChart(saved, players, expectedDepthChart))
       setCustomLineup(true)
+      setLineupSaved(true)
     } else {
       setDepthChart(expectedDepthChart)
       setCustomLineup(false)
+      setLineupSaved(false)
     }
   }, [team?.abbr, players, expectedDepthChart])
 
   function persistChart(next) {
+    // Edits are an unsaved draft until the user explicitly clicks Save this lineup.
     setDepthChart(next)
     setCustomLineup(true)
-    if (team) localStorage.setItem(storageKey(team.abbr), JSON.stringify(serializeDepthChart(next)))
+    setLineupSaved(false)
+  }
+
+  function saveCustomLineup() {
+    if (!team) return
+    localStorage.setItem(storageKey(team.abbr), JSON.stringify(serializeDepthChart(depthChart)))
+    setLineupSaved(true)
   }
 
   function handleDragStart(event, player) {
@@ -1228,6 +1238,7 @@ function TeamPage() {
     localStorage.removeItem(storageKey(team.abbr))
     setDepthChart(expectedDepthChart)
     setCustomLineup(false)
+    setLineupSaved(false)
   }
 
   function moveFromPanel(position, index) {
@@ -1310,13 +1321,14 @@ function TeamPage() {
             <h2>Depth chart</h2>
           </div>
           <div className="depth-chart-actions">
-            <button type="button" className="secondary-action" onClick={resetExpectedLineup}>Reset expected</button>
+            {customLineup && !lineupSaved ? <button type="button" className="secondary-action" onClick={saveCustomLineup}>Save this lineup</button> : null}
+            <button type="button" className="secondary-action" onClick={resetExpectedLineup}>{customLineup ? 'Return to live lineup' : 'Refresh expected'}</button>
           </div>
         </div>
         <div className="lineup-context-row">
           <p className="lineup-context">
             {customLineup
-              ? 'This is your saved arrangement on this device. Move any player to any position.'
+              ? lineupSaved ? 'Saved custom lineup on this device. Choose Return to live lineup to restore current projections.' : 'Unsaved lineup edits. Choose Save this lineup to keep them on this device, or Return to live lineup to discard.'
               : projectedLineup
                 ? `${projectedLineup.provider} projected depth chart · ${projectedLineup.seasonLabel}. Rotation order is mapped onto NBACAB's reconciled roster.`
                 : projectedLineupLoading
